@@ -1,6 +1,6 @@
 {
-  "name": "yt-course",
-  "productName": "YT Course",
+  "name": "playlearn",
+  "productName": "Playlearn",
   "version": "1.0.0",
   "description": "Turn any YouTube playlist into a Udemy-style course, saved locally",
   "main": "main.js",
@@ -23,6 +23,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rahul1015s/yt-course.git"
+    "url": "git+https://github.com/rahul1015s/playlearn.git"
   }
 }

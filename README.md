@@ -1,6 +1,6 @@
-# YT Course
+# Playlearn
 
-<p align="center"><img src="assets/icon-256.png" width="128" alt="YT Course icon"></p>
+<p align="center"><img src="assets/icon-256.png" width="128" alt="Playlearn icon"></p>
 
 Turn any **YouTube playlist** into a **Udemy-style course** on your Linux desktop.
 Paste a playlist link and get a classroom with sections, lesson checklist, progress tracking,
@@ -14,7 +14,7 @@ Built with Electron. Developed and tested on Fedora.
 - **Udemy-like course page** – dark top bar with progress ring, video on the left,
   *Course content* sidebar (sections of 10 lessons, checkboxes, durations), Overview and Notes tabs
 - **Import a playlist three ways** – paste a link, drag a link onto the window,
-  or run `yt-course "https://www.youtube.com/playlist?list=..."`
+  or run `playlearn "https://www.youtube.com/playlist?list=..."`
 - **Progress saved locally** – completed lessons, resume position, last lesson watched, per-lesson notes
 - **Custom player** – play/pause, ±10s skip, seek bar with buffer, volume, speed, fullscreen,
   **captions** (on/off + language) and **auto-dubbed audio** switching; your choices are remembered
@@ -29,13 +29,13 @@ Requirements: **Node.js 18+**, **npm**, **yt-dlp**.
 ```bash
 sudo dnf install nodejs yt-dlp        # yt-dlp is also auto-downloaded on first import if missing
 
-git clone https://github.com/rahul1015s/yt-course.git
-cd yt-course
+git clone https://github.com/rahul1015s/playlearn.git
+cd playlearn
 ./install.sh
 ```
 
-`install.sh` installs dependencies, creates the `yt-course` command in `~/.local/bin`,
-and adds **YT Course** (with icon) to your application menu. No root needed.
+`install.sh` installs dependencies, creates the `playlearn` command in `~/.local/bin`,
+and adds **Playlearn** (with icon) to your application menu. No root needed.
 
 Make sure `~/.local/bin` is in your `PATH`.
 
@@ -48,7 +48,7 @@ npm start
 
 ## Usage
 
-1. Open **YT Course**.
+1. Open **Playlearn**.
 2. Paste a playlist URL (must contain `?list=...`) and press **Create course**.
 3. Click a course card to open it. Pick lessons from the right-hand *Course content* list.
 4. Tick lessons manually, or let them complete automatically as you watch.
@@ -80,8 +80,10 @@ Availability depends on the video – not every video has captions or dubs.
 Courses are plain JSON files:
 
 ```
-~/.config/YT Course/courses/<playlist-id>.json
+~/.config/Playlearn/courses/<playlist-id>.json
 ```
+
+> Upgrading from the old name "YT Course"? Courses in `~/.config/YT Course/` are copied over automatically on first launch.
 
 Each file holds the lesson list, completed flags, resume positions and notes. Delete a course from
 the Home page (hover a card → bin icon → click again), or remove its file. Back the folder up to keep your progress.
@@ -113,9 +115,9 @@ install.sh       Per-user installer (command, menu entry, icons)
 ## Uninstall
 
 ```bash
-rm -f ~/.local/bin/yt-course ~/.local/share/applications/yt-course.desktop
-rm -f ~/.local/share/icons/hicolor/*/apps/yt-course.*
-rm -rf ~/.config/"YT Course"      # also deletes your saved courses
+rm -f ~/.local/bin/playlearn ~/.local/share/applications/playlearn.desktop
+rm -f ~/.local/share/icons/hicolor/*/apps/playlearn.*
+rm -rf ~/.config/"Playlearn"      # also deletes your saved courses
 ```
 
 ## Disclaimer

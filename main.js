@@ -186,7 +186,7 @@ function pushUrl(url) {
 function createWindow() {
   win = new BrowserWindow({
     width: 1400, height: 880, minWidth: 960, minHeight: 600, backgroundColor: '#1c1d1f',
-    title: 'YT Course', autoHideMenuBar: true,
+    title: 'Playlearn', autoHideMenuBar: true,
     icon: path.join(__dirname, 'assets', 'icon.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
@@ -200,7 +200,7 @@ function createWindow() {
 
 const urlArg = (argv) => argv.find((a) => /^https?:\/\//.test(a) || /^ytcourse:/.test(a));
 
-app.setDesktopName('yt-course.desktop');
+app.setDesktopName('playlearn.desktop');
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', (_e, argv) => {
@@ -208,6 +208,11 @@ else {
     const u = urlArg(argv); if (u) pushUrl(u);
   });
   app.whenReady().then(async () => {
+    // one-time migration from the old "YT Course" app name
+    try {
+      const old = path.join(app.getPath('appData'), 'YT Course', 'courses');
+      if (fs.existsSync(old) && !fs.existsSync(dataDir())) fs.cpSync(old, dataDir(), { recursive: true });
+    } catch {}
     port = await startServer();
     ipcMain.handle('courses:list', () => listCourses());
     ipcMain.handle('courses:get', (_e, id) => readCourse(id));

@@ -64,7 +64,7 @@ async function goHome() {
   $app.innerHTML = `
   <div class="home">
     <div class="hero">
-      <div class="logo" style="margin-bottom:28px"><img src="icon.svg" width="30" height="30" alt="" style="border-radius:8px">YT Course</div>
+      <div class="logo" style="margin-bottom:28px"><img src="icon.svg" width="30" height="30" alt="" style="border-radius:8px">Playlearn</div>
       <h1>Turn any YouTube playlist into a course.</h1>
       <p>Paste a playlist link. Get a Udemy-style classroom with sections, progress tracking and notes – saved on this computer.</p>
       <form class="add" id="addForm">
@@ -150,7 +150,7 @@ function renderCourse() {
   <div class="course">
     <div class="topbar">
       <button class="back" id="back" title="Back to home (Esc)">${I.back} Back</button>
-      <div class="logo" id="goHome" title="Home"><img src="icon.svg" width="28" height="28" alt="" style="border-radius:7px">YT Course</div>
+      <div class="logo" id="goHome" title="Home"><img src="icon.svg" width="28" height="28" alt="" style="border-radius:7px">Playlearn</div>
       <div class="sep"></div>
       <div class="ctitle">${esc(C.title)}</div>
       <div class="prog" id="prog">${ringSvg(pct(C))}<span>${C.lessons.filter((l) => l.done).length}/${C.lessons.length} done</span></div>
