@@ -1,0 +1,28 @@
+{
+  "name": "yt-course",
+  "productName": "YT Course",
+  "version": "1.0.0",
+  "description": "Turn any YouTube playlist into a Udemy-style course, saved locally",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^45.2.1"
+  },
+  "author": "rahul1015s",
+  "keywords": [
+    "youtube",
+    "playlist",
+    "course",
+    "electron",
+    "udemy",
+    "fedora",
+    "linux"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rahul1015s/yt-course.git"
+  }
+}
