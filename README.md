@@ -22,6 +22,7 @@ Built with Electron. Developed and tested on Fedora.
 - **Ad blocking** – network rules for ad hosts plus an in-player ad skipper (best effort)
 - **Back button** on the course page (also `Esc` / `Alt+←`)
 
+- **Playlist refresh** – picks up videos the creator adds later without touching your progress. The **↻** button on a course card (or **Refresh all** on Home), and **Refresh playlist** on the Overview tab, re-read the playlist; opening a course also checks automatically, at most once a day. New lessons get a **New** badge for a week; lessons that left the playlist are dropped, unless you have progress, notes or a download for them (those stay, marked *removed*)
 - **Chapters on the seek bar** – videos with chapters get tick marks on the seek bar, a hover tooltip with time + chapter title, the current chapter name next to the time, a chapters menu, and `[` / `]` to jump between chapters (chapters are read with yt-dlp the first time a lesson opens, then cached)
 - **Lesson search** – search box above the lesson list (`/` or `Ctrl+F`) matches lesson titles, your notes (general and timestamped) and chapter names, highlights matches, and jumps straight to the note/chapter moment when you click a result
 - **Dark mode** – toggle in the top bar (sun/moon button); follows your system setting the first time and is remembered
@@ -139,7 +140,7 @@ the Home page (hover a card → bin icon → click again), or remove its file. B
 
 - Videos whose owners disabled embedding can't be streamed in the app (download them to play offline).
 - Private / deleted videos are skipped on import.
-- A course doesn't auto-refresh when the playlist changes – delete and re-add it.
+- Refresh needs internet and `yt-dlp`; if the playlist can't be read, nothing is changed.
 - Some ads are stitched into the stream and can't be blocked by URL; the skipper handles most of them.
 
 ## Project layout

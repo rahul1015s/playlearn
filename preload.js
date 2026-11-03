@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('api', {
   get: (id) => ipcRenderer.invoke('courses:get', id),
   save: (c) => ipcRenderer.invoke('courses:save', c),
   remove: (id) => ipcRenderer.invoke('courses:delete', id),
+  refreshCourse: (id) => ipcRenderer.invoke('courses:refresh', id),
   importPlaylist: (url) => ipcRenderer.invoke('courses:import', url),
   playerOp: (op, arg) => ipcRenderer.invoke('player:op', op, arg),
   dnd: (on) => ipcRenderer.invoke('dnd:set', on),

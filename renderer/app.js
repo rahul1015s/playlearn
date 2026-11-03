@@ -28,6 +28,7 @@ const I = {
   vol: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z" fill="#fff"/><path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12"/></svg>',
   muted: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z" fill="#fff"/><path d="M17 9l5 6M22 9l-5 6"/></svg>',
   full: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
+  refresh: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 00-14.5-4M4 4v4h4M4 13a8 8 0 0014.5 4M20 20v-4h-4"/></svg>',
   sun: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
   moon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 13A9 9 0 1111 3a7 7 0 0010 10z"/></svg>',
   dl: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>',
@@ -90,13 +91,23 @@ async function goHome() {
           <div class="bar"><i style="width:${pct(last)}%"></i></div></div>
         <button class="btn">Resume</button>
       </div>` : ''}
-      <h2>My courses</h2>
+      <div class="h2row"><h2>My courses</h2>${courses.length ? `<button class="btn ghost" id="refreshAll">${I.refresh} Refresh all</button>` : ''}</div>
       ${courses.length ? `<div class="grid">${courses.map(card).join('')}</div>` : `
       <div class="empty">${I.book}<h3>No courses yet</h3><p>Paste a playlist link above, or drag a link onto this window.</p></div>`}
     </div>
   </div>`;
   document.getElementById('addForm').onsubmit = (e) => { e.preventDefault(); doImport(document.getElementById('url').value); };
   $app.querySelectorAll('[data-open]').forEach((el) => (el.onclick = () => openCourse(el.dataset.open)));
+  $app.querySelectorAll('[data-refresh]').forEach((el) => (el.onclick = async (e) => {
+    e.stopPropagation(); el.classList.add('spin');
+    const r = await api.refreshCourse(el.dataset.refresh);
+    toast(r.ok ? refreshMsg(r) : 'Refresh failed: ' + r.error, !r.ok); goHome();
+  }));
+  { const ra = document.getElementById('refreshAll'); if (ra) ra.onclick = async () => {
+    ra.disabled = true; let added = 0, failed = 0;
+    for (let k = 0; k < courses.length; k++) { ra.textContent = `Refreshing ${k + 1}/${courses.length}…`; const r = await api.refreshCourse(courses[k].id); if (r.ok) added += r.added; else failed++; }
+    toast(`${added ? added + ' new lesson' + (added === 1 ? '' : 's') + ' found' : 'Everything is up to date'}${failed ? ` · ${failed} course(s) could not be checked` : ''}`, !!failed && !added); goHome();
+  }; }
   $app.querySelectorAll('[data-del]').forEach((el) => (el.onclick = async (e) => {
     e.stopPropagation();
     if (el.dataset.confirm !== '1') { el.dataset.confirm = '1'; el.style.width = 'auto'; el.style.padding = '0 10px'; el.textContent = 'Click again to delete'; setTimeout(goHome, 2500); return; }
@@ -108,6 +119,7 @@ function card(c) {
   return `<div class="card" data-open="${esc(c.id)}">
     <div class="thumb" style="background-image:url(${esc(c.thumbnail)})"><div class="play"><b>${I.play}</b></div></div>
     <button class="del" data-del="${esc(c.id)}" title="Delete course">${I.trash}</button>
+    <button class="del refr" data-refresh="${esc(c.id)}" title="Check the playlist for new videos">${I.refresh}</button>
     <div class="card-body"><h3>${esc(c.title)}</h3><small>${esc(c.channel)}</small>
       <div class="meta"><span>${c.lessons.length} lessons · ${fmtDur(total)}</span><span>${p}%</span></div>
       <div class="bar"><i style="width:${p}%"></i></div></div></div>`;
@@ -145,6 +157,7 @@ async function openCourse(id) {
   tab = 'overview';
   renderCourse();
   queueSave();
+  if (!C.refreshedAt || Date.now() - C.refreshedAt > 864e5) refreshNow(true);
 }
 
 function ringSvg(p) {
@@ -244,8 +257,10 @@ function renderPane() {
         <div><b>${pct(C)}%</b><span>Complete</span></div>
       </div>
       <div id="dlbox"></div>
-      <button class="btn ghost" id="syncBtn" style="margin-top:22px">Source playlist ↗</button>`;
+      <div class="nrow" style="margin-top:22px"><button class="btn ghost" id="refreshBtn">${I.refresh} Refresh playlist</button><button class="btn ghost" id="syncBtn">Source playlist ↗</button></div>
+      <div class="hint">${C.refreshedAt ? 'Last checked ' + ago(C.refreshedAt) + '.' : 'Not checked yet.'} New videos are picked up automatically when you open the course (at most once a day).</div>`;
     document.getElementById('syncBtn').onclick = () => api.openExternal(C.url);
+    document.getElementById('refreshBtn').onclick = () => refreshNow(false);
     renderDlBox();
   }
 }
@@ -270,7 +285,7 @@ function itemHtml(l, i, m, ws) {
   const label = m && m.kind !== 'title' ? ({ note: 'Notes', mark: 'Note', chapter: 'Chapter' }[m.kind]) : '';
   return `<div class="item ${i === cur ? 'on' : ''}" data-i="${i}" ${m && m.t != null ? `data-t="${m.t}"` : ''}>
     <div class="cb ${l.done ? 'done' : ''}" data-cb="${i}">${l.done ? I.check : ''}</div>
-    <div><div class="t">${i + 1}. ${hl(l.title, ws)}</div>
+    <div><div class="t">${i + 1}. ${hl(l.title, ws)}${l.gone ? ' <span class="gonebadge" title="This video is no longer in the playlist">removed</span>' : isNew(l) ? ' <span class="newbadge">New</span>' : ''}</div>
     ${label ? `<div class="snip">${label}${m.t != null ? ' · ' + fmtT(m.t) : ''}: ${hl(m.text, ws)}</div>` : ''}
     <div class="d">${I.playSm}${fmtDur(l.duration)}<button class="dlb ${dlCls(l.id)}" data-dl="${l.id}" title="Download for offline">${dlIcon(l.id)}</button></div></div></div>`;
 }
@@ -812,6 +827,40 @@ function stepChapter(dir) {
   const t = player.getCurrentTime();
   const target = dir > 0 ? CH.find((c) => c.t > t + 1) : [...CH].reverse().find((c) => c.t < t - 2);
   if (target) { player.seekTo(target.t, true); toast(target.title); } else if (dir < 0) player.seekTo(0, true);
+}
+
+// ---------- playlist refresh ----------
+const isNew = (l) => !!l.addedAt && !l.done && Date.now() - l.addedAt < 7 * 864e5;
+function ago(ts) {
+  const s = Math.max(0, (Date.now() - ts) / 1000);
+  if (s < 90) return 'just now'; if (s < 5400) return Math.round(s / 60) + ' min ago';
+  if (s < 129600) return Math.round(s / 3600) + ' h ago'; return Math.round(s / 86400) + ' days ago';
+}
+function refreshMsg(r) {
+  const bits = [];
+  if (r.added) bits.push(`${r.added} new lesson${r.added === 1 ? '' : 's'} added`);
+  if (r.removed) bits.push(`${r.removed} removed from the playlist`);
+  if (r.kept) bits.push(`${r.kept} kept (you have notes, progress or a download)`);
+  return bits.length ? bits.join(' · ') : 'Already up to date';
+}
+let refreshing = false;
+async function refreshNow(silent) {
+  if (refreshing || !C) return;
+  refreshing = true;
+  const id = C.id, btn = $('refreshBtn'); if (btn && !silent) { btn.disabled = true; btn.lastChild.textContent = ' Checking…'; }
+  flushSave();
+  const r = await api.refreshCourse(id);
+  refreshing = false;
+  if (btn) { btn.disabled = false; }
+  if (!r.ok) { if (!silent) toast('Refresh failed: ' + r.error, true); return; }
+  if (!C || C.id !== id) return; // user left the course meanwhile; the file is already updated
+  const here = C.lessons[cur] && C.lessons[cur].id;
+  const progress = C.lessons.find((l) => l.id === here);
+  C = r.course; C.lastOpened = Date.now();
+  const k = C.lessons.findIndex((l) => l.id === here); cur = k >= 0 ? k : 0;
+  if (progress && k >= 0) Object.assign(C.lessons[k], { done: progress.done || C.lessons[k].done, pos: Math.max(progress.pos || 0, C.lessons[k].pos || 0) });
+  queueSave(); refreshProgress();
+  if (!silent || r.added) toast(refreshMsg(r));
 }
 
 goHome();

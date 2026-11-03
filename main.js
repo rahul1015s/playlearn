@@ -62,32 +62,62 @@ function playlistId(input) {
   return /^(PL|UU|OL|FL|LL)[\w-]{10,}$/.test(s) ? s : null;
 }
 
-async function importPlaylist(input, send) {
-  const pid = playlistId(input);
-  if (!pid) throw new Error('That does not look like a YouTube playlist link (needs ?list=…)');
-  const existing = listCourses().find((c) => c.playlistId === pid);
-  if (existing) return existing;
+async function fetchPlaylist(pid, send) {
   const bin = await ensureYtDlp(send);
   send('Reading playlist…');
   const out = await run(bin, ['--flat-playlist', '-J', '--no-warnings', 'https://www.youtube.com/playlist?list=' + pid]);
   const j = JSON.parse(out);
   const lessons = (j.entries || [])
     .filter((e) => e && e.id && !/^\[(Private|Deleted) video\]$/i.test(e.title || ''))
-    .map((e, i) => ({
-      id: e.id, title: e.title || 'Lesson ' + (i + 1), duration: Math.round(e.duration || 0),
-      done: false, pos: 0, notes: '',
-    }));
+    .map((e, i) => ({ id: e.id, title: e.title || 'Lesson ' + (i + 1), duration: Math.round(e.duration || 0) }));
   if (!lessons.length) throw new Error('No playable videos found in this playlist');
+  return { title: j.title || '', channel: j.channel || j.uploader || '', lessons };
+}
+
+async function importPlaylist(input, send) {
+  const pid = playlistId(input);
+  if (!pid) throw new Error('That does not look like a YouTube playlist link (needs ?list=…)');
+  const existing = listCourses().find((c) => c.playlistId === pid);
+  if (existing) return existing;
+  const pl = await fetchPlaylist(pid, send);
+  const lessons = pl.lessons.map((l) => ({ ...l, done: false, pos: 0, notes: '' }));
   const course = {
     id: pid, playlistId: pid,
-    title: j.title || 'Untitled course',
-    channel: j.channel || j.uploader || '',
+    title: pl.title || 'Untitled course',
+    channel: pl.channel,
     url: 'https://www.youtube.com/playlist?list=' + pid,
     thumbnail: 'https://i.ytimg.com/vi/' + lessons[0].id + '/hqdefault.jpg',
-    createdAt: Date.now(), lastOpened: Date.now(), lastLesson: lessons[0].id, lessons,
+    createdAt: Date.now(), lastOpened: Date.now(), refreshedAt: Date.now(), lastLesson: lessons[0].id, lessons,
   };
   writeCourse(course);
   return course;
+}
+
+// Re-read the playlist and merge: keep all progress/notes/chapters, add new videos, follow the playlist order.
+// Videos that left the playlist are dropped unless you have progress, notes or a download for them.
+async function refreshCourse(id, send) {
+  const old = readCourse(id);
+  const pl = await fetchPlaylist(old.playlistId, send); // throws (and changes nothing) if the playlist can't be read
+  const byId = new Map(old.lessons.map((l) => [l.id, l]));
+  const seen = new Set(), now = Date.now();
+  const lessons = pl.lessons.map((n) => {
+    seen.add(n.id);
+    const o = byId.get(n.id);
+    if (o) { const { gone, ...rest } = o; return { ...rest, title: n.title, duration: n.duration || o.duration }; }
+    return { ...n, done: false, pos: 0, notes: '', addedAt: now };
+  });
+  const added = lessons.filter((l) => !byId.has(l.id)).length;
+  const have = dlScan(id);
+  let removed = 0, kept = 0;
+  for (const o of old.lessons) {
+    if (seen.has(o.id)) continue;
+    const mine = o.done || o.pos || (o.notes && o.notes.trim()) || (o.marks && o.marks.length) || have[o.id];
+    if (mine) { lessons.push({ ...o, gone: true }); if (!o.gone) kept++; } else removed++;
+  }
+  const course = { ...old, title: pl.title || old.title, channel: pl.channel || old.channel, lessons, refreshedAt: now };
+  if (!lessons.some((l) => l.id === course.lastLesson)) course.lastLesson = lessons[0].id;
+  writeCourse(course);
+  return { course, added, removed, kept };
 }
 
 // ---------- local server (YouTube embeds refuse file:// origins) ----------
@@ -360,6 +390,10 @@ else {
     ipcMain.handle('courses:get', (_e, id) => readCourse(id));
     ipcMain.handle('courses:save', (_e, c) => { writeCourse(c); return true; });
     ipcMain.handle('courses:delete', (_e, id) => { if (okId(id)) { dlCancel(id); fs.rmSync(dlDir(id), { recursive: true, force: true }); } fs.rmSync(courseFile(id), { force: true }); return true; });
+    ipcMain.handle('courses:refresh', async (e, id) => {
+      try { if (!okId(id)) throw new Error('Bad course id'); return { ok: true, ...(await refreshCourse(id, (m) => e.sender.send('import-status', m))) }; }
+      catch (err) { return { ok: false, error: err.message }; }
+    });
     ipcMain.handle('courses:import', async (e, url) => {
       try { return { ok: true, course: await importPlaylist(url, (m) => e.sender.send('import-status', m)) }; }
       catch (err) { return { ok: false, error: err.message }; }
