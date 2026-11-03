@@ -24,5 +24,27 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rahul1015s/playlearn.git"
+  },
+  "bin": {
+    "playlearn": "bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "main.js",
+    "preload.js",
+    "renderer",
+    "assets",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "linux"
+  ],
+  "homepage": "https://github.com/rahul1015s/playlearn#readme",
+  "bugs": {
+    "url": "https://github.com/rahul1015s/playlearn/issues"
   }
 }

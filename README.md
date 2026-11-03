@@ -24,20 +24,31 @@ Built with Electron. Developed and tested on Fedora.
 
 ## Install (Fedora / Linux)
 
-Requirements: **Node.js 18+**, **npm**, **yt-dlp**.
+One command, no cloning needed. Requires **Node.js 18+** (`sudo dnf install nodejs`):
 
 ```bash
-sudo dnf install nodejs yt-dlp        # yt-dlp is also auto-downloaded on first import if missing
+npx github:rahul1015s/playlearn
+```
 
+This installs Playlearn for your user (no root): the app goes to `~/.local/share/playlearn`,
+a `playlearn` command to `~/.local/bin`, and **Playlearn** (with icon) appears in your app menu.
+It launches automatically when done. Run the same command again any time to update.
+
+Importing playlists uses **yt-dlp** – `sudo dnf install yt-dlp` (if it's missing, the app downloads it on first import).
+Make sure `~/.local/bin` is in your `PATH` to use the `playlearn` command.
+
+```bash
+npx github:rahul1015s/playlearn uninstall           # remove the app, keep your courses
+npx github:rahul1015s/playlearn uninstall --purge   # remove the app and your saved courses
+```
+
+### Install from a clone
+
+```bash
 git clone https://github.com/rahul1015s/playlearn.git
 cd playlearn
 ./install.sh
 ```
-
-`install.sh` installs dependencies, creates the `playlearn` command in `~/.local/bin`,
-and adds **Playlearn** (with icon) to your application menu. No root needed.
-
-Make sure `~/.local/bin` is in your `PATH`.
 
 ### Run without installing
 
@@ -109,7 +120,8 @@ main.js          Electron main process: storage, yt-dlp import, local server, ad
 preload.js       Safe bridge between UI and main process
 renderer/        UI (index.html, styles.css, app.js)
 assets/          App icon (SVG + PNG sizes)
-install.sh       Per-user installer (command, menu entry, icons)
+bin/cli.js       `npx` installer / uninstaller (copies app, installs Electron, menu entry, icons)
+install.sh       Same, but installs from a clone and runs in place
 ```
 
 ## Uninstall
