@@ -22,6 +22,13 @@ Built with Electron. Developed and tested on Fedora.
 - **Ad blocking** – network rules for ad hosts plus an in-player ad skipper (best effort)
 - **Back button** on the course page (also `Esc` / `Alt+←`)
 
+### Built for studying without distractions
+
+- **Focus mode** (`Z`) – hides everything except the video; `Z` or `Esc` exits
+- **No YouTube suggestions** – YouTube's pause/end-screen recommendation walls are hidden; at the end of a lesson you get a clean "Lesson complete" card with a Next button
+- **Study timer** – Pomodoro presets (25/5, 50/10, 90/15) with automatic breaks; on GNOME it turns on **Do Not Disturb** while you study and restores your setting afterwards (even after a crash)
+- **Timestamped notes** (`N`) – jot a note at the current second, click it later to jump back, and export all notes as Markdown
+
 ## Install (Fedora / Linux)
 
 One command, no cloning needed. Requires **Node.js 18+** (`sudo dnf install nodejs`):
@@ -75,6 +82,8 @@ npm start
 | `M` | Mute |
 | `F` | Fullscreen |
 | `C` | Toggle captions |
+| `Z` | Focus mode |
+| `N` | Add a note at the current time |
 | `<` / `>` (or `,` / `.`) | Slower / faster |
 | `Shift+N` / `Shift+P` | Next / previous lesson |
 | `Esc` / `Alt+←` | Back to home |

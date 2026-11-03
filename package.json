@@ -1,7 +1,7 @@
 {
   "name": "playlearn",
   "productName": "Playlearn",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Turn any YouTube playlist into a Udemy-style course, saved locally",
   "main": "main.js",
   "scripts": {

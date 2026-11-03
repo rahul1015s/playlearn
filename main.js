@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { execFile } = require('child_process');
+const { execFile, execFileSync } = require('child_process');
 
 const RENDERER = path.join(__dirname, 'renderer');
 let win = null;
@@ -113,6 +113,9 @@ const AD_PATHS = [/\/pagead\//, /\/api\/stats\/ads/, /\/ptracking/, /\/get_midro
   /[?&]ad_type=/, /\/api\/stats\/qoe\?.*adformat/, /\/generate_204\?.*ad/];
 const AD_SKIPPER = `(() => {
   if (window.__ytcAds) return; window.__ytcAds = true;
+  const st = document.createElement('style');
+  st.textContent = '.ytp-pause-overlay,.ytp-pause-overlay-container,.ytp-endscreen-content,.ytp-ce-element,.ytp-cards-teaser,.ytp-suggested-action,.ytp-videowall-still,.ytp-chrome-top,.ytp-gradient-top,.ytp-show-cards-title,.ytp-watermark,.ytp-impression-link,.iv-branding,.annotation{display:none!important}';
+  document.head.appendChild(st);
   let mutedByUs = false;
   const tick = () => {
     const p = document.querySelector('.html5-video-player'); if (!p) return;
@@ -129,6 +132,30 @@ const AD_SKIPPER = `(() => {
   };
   setInterval(tick, 250);
 })();`;
+// ---------- Do Not Disturb while studying (GNOME) ----------
+const DND_KEY = ['org.gnome.desktop.notifications', 'show-banners'];
+const dndFile = () => path.join(app.getPath('userData'), 'dnd-prev');
+let dndPrev = null;
+const gs = (a) => new Promise((res) => execFile('gsettings', a, (e, out) => res(e ? null : out.trim())));
+async function setDnd(on) {
+  if (on) {
+    const cur = await gs(['get', ...DND_KEY]);
+    if (cur === null) return false; // not GNOME / gsettings missing
+    if (dndPrev === null) { dndPrev = cur; try { fs.writeFileSync(dndFile(), cur); } catch {} }
+    await gs(['set', ...DND_KEY, 'false']);
+    return true;
+  }
+  if (dndPrev !== null) { await gs(['set', ...DND_KEY, dndPrev]); dndPrev = null; try { fs.rmSync(dndFile(), { force: true }); } catch {} }
+  return true;
+}
+function restoreDndSync() { // also recovers after a crash
+  try {
+    const v = dndPrev !== null ? dndPrev : (fs.existsSync(dndFile()) ? fs.readFileSync(dndFile(), 'utf8').trim() : null);
+    if (v === 'true' || v === 'false') execFileSync('gsettings', ['set', ...DND_KEY, v]);
+    dndPrev = null; fs.rmSync(dndFile(), { force: true });
+  } catch {}
+}
+
 // ---------- captions / audio-track control inside the embed frame ----------
 const FP = `const p=document.getElementById('movie_player');`;
 const FRAME_OPS = {
@@ -213,6 +240,7 @@ else {
       const old = path.join(app.getPath('appData'), 'YT Course', 'courses');
       if (fs.existsSync(old) && !fs.existsSync(dataDir())) fs.cpSync(old, dataDir(), { recursive: true });
     } catch {}
+    restoreDndSync();
     port = await startServer();
     ipcMain.handle('courses:list', () => listCourses());
     ipcMain.handle('courses:get', (_e, id) => readCourse(id));
@@ -222,9 +250,11 @@ else {
       try { return { ok: true, course: await importPlaylist(url, (m) => e.sender.send('import-status', m)) }; }
       catch (err) { return { ok: false, error: err.message }; }
     });
+    ipcMain.handle('dnd:set', (_e, on) => setDnd(!!on));
     ipcMain.handle('open-external', (_e, u) => shell.openExternal(u));
     pendingUrl = urlArg(process.argv.slice(1)) || null;
     createWindow();
   });
   app.on('window-all-closed', () => app.quit());
+  app.on('will-quit', restoreDndSync);
 }

@@ -28,6 +28,9 @@ const I = {
   vol: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z" fill="#fff"/><path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12"/></svg>',
   muted: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z" fill="#fff"/><path d="M17 9l5 6M22 9l-5 6"/></svg>',
   full: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
+  focus: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 8V5a2 2 0 012-2h3M16 3h3a2 2 0 012 2v3M21 16v3a2 2 0 01-2 2h-3M8 21H5a2 2 0 01-2-2v-3"/></svg>',
+  note: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5z"/><path d="M9 11h6M9 15h4"/></svg>',
+  timer: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>',
   cc: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M10.5 10.2a2.2 2.2 0 100 3.6M17 10.2a2.2 2.2 0 100 3.6"/></svg>',
   dub: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg>',
   logo: '<svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M8 5v14l11-7z"/></svg>',
@@ -147,13 +150,14 @@ function ringSvg(p) {
 function renderCourse() {
   const L = C.lessons[cur];
   $app.innerHTML = `
-  <div class="course">
+  <div class="course ${focusMode ? 'focus' : ''}">
     <div class="topbar">
       <button class="back" id="back" title="Back to home (Esc)">${I.back} Back</button>
       <div class="logo" id="goHome" title="Home"><img src="icon.svg" width="28" height="28" alt="" style="border-radius:7px">Playlearn</div>
       <div class="sep"></div>
       <div class="ctitle">${esc(C.title)}</div>
       <div class="prog" id="prog">${ringSvg(pct(C))}<span>${C.lessons.filter((l) => l.done).length}/${C.lessons.length} done</span></div>
+      <div class="timerwrap"><button class="tb-btn" id="timerBtn" title="Study timer">${I.timer}<span id="timerTxt">Timer</span></button><div class="pop" id="timerPop" hidden></div></div>
       <button class="tb-btn" id="toggleSide" title="Course content">${I.panel}</button>
     </div>
     <div class="main">
@@ -162,6 +166,9 @@ function renderCourse() {
           <div id="yt"></div>
           <div class="shield" id="shield"></div>
           <div class="bigplay" id="bigplay"></div>
+          <div class="tchip" id="tchip" hidden></div>
+          <div class="endcard" id="endcard" hidden></div>
+          <div class="qnote" id="qnote" hidden></div>
           <div class="controls" id="controls">
             <input type="range" class="seek" id="seek" min="0" max="1000" value="0" step="1">
             <div class="crow">
@@ -172,9 +179,11 @@ function renderCourse() {
               <input type="range" class="vol" id="vol" min="0" max="100" value="100">
               <span class="time"><span id="tcur">0:00</span> / <span id="tdur">0:00</span></span>
               <span class="grow"></span>
+              <button class="cb2" id="noteBtn" title="Add note at this moment (N)">${I.note}</button>
               <div class="speedwrap"><button class="cb2" id="ccBtn" title="Captions (C)">${I.cc}</button><div class="menu" id="ccMenu" hidden></div></div>
               <div class="speedwrap"><button class="cb2" id="dubBtn" title="Audio / auto-dubbed">${I.dub}</button><div class="menu" id="dubMenu" hidden></div></div>
               <div class="speedwrap"><button class="cb2 txt" id="speed" title="Speed (&lt; &gt;)">1x</button><div class="menu" id="speedMenu" hidden></div></div>
+              <button class="cb2" id="focusBtn" title="Focus mode (Z)">${I.focus}</button>
               <button class="cb2" id="fs" title="Fullscreen (F)">${I.full}</button>
             </div>
           </div>
@@ -205,17 +214,13 @@ function renderCourse() {
   document.getElementById('prev').onclick = () => select(cur - 1);
   document.getElementById('next').onclick = () => select(cur + 1);
   $app.querySelectorAll('.tab').forEach((b) => (b.onclick = () => { saveNotes(); tab = b.dataset.tab; $app.querySelectorAll('.tab').forEach((x) => x.classList.toggle('on', x === b)); renderPane(); }));
-  renderList(); renderPane(); mountPlayer();
+  renderList(); renderPane(); wireTimer(); mountPlayer();
 }
 
 function renderPane() {
   const pane = document.getElementById('pane'), L = C.lessons[cur];
   if (tab === 'notes') {
-    pane.innerHTML = `<h2>Notes for lesson ${cur + 1}</h2>
-      <textarea class="notes" id="notes" placeholder="Write anything you want to remember…">${esc(L.notes)}</textarea>
-      <div class="hint">Saved automatically on this computer.</div>`;
-    const ta = document.getElementById('notes');
-    ta.oninput = () => { L.notes = ta.value; queueSave(); };
+    renderNotesPane(pane, L);
   } else {
     const total = C.lessons.reduce((a, l) => a + l.duration, 0);
     const left = C.lessons.filter((l) => !l.done).reduce((a, l) => a + l.duration, 0);
@@ -295,6 +300,7 @@ function mountPlayer() {
         onStateChange: (e) => {
           if (e.data === YT.PlayerState.PLAYING) applyPrefsOnce();
           setPlayingUI(e.data === YT.PlayerState.PLAYING || e.data === YT.PlayerState.BUFFERING);
+          showEnd(e.data === YT.PlayerState.ENDED);
           if (e.data === YT.PlayerState.PLAYING) {
             clearInterval(tick);
             tick = setInterval(() => {
@@ -357,6 +363,7 @@ function wireControls() {
   $('back10').onclick = () => seekBy(-10); $('fwd10').onclick = () => seekBy(10);
   $('mute').onclick = toggleMute; $('vol').oninput = (e) => setVolume(+e.target.value);
   $('fs').onclick = toggleFs;
+  $('focusBtn').onclick = toggleFocus; $('noteBtn').onclick = () => quickNote();
   $('speed').onclick = () => {
     const m = $('speedMenu');
     m.innerHTML = player.getAvailablePlaybackRates().map((r) => `<button data-r="${r}" class="${r === player.getPlaybackRate() ? 'on' : ''}">${r}x</button>`).join('');
@@ -467,12 +474,133 @@ window.addEventListener('keydown', (e) => {
   if (e.shiftKey && k === 'N') return select(cur + 1);
   if (e.shiftKey && k === 'P') return select(cur - 1);
   if (e.altKey && k === 'ArrowLeft') return goHome();
-  if (k === 'Escape' && !document.fullscreenElement) return goHome();
+  if (k === 'Escape' && !document.fullscreenElement) return focusMode ? toggleFocus() : goHome();
   if (!player || !player.getPlayerState) return;
   const map = { ' ': togglePlay, k: togglePlay, j: () => seekBy(-10), l: () => seekBy(10), ArrowLeft: () => seekBy(-5), ArrowRight: () => seekBy(5),
-    ArrowUp: () => setVolume(player.getVolume() + 5), ArrowDown: () => setVolume(player.getVolume() - 5), m: toggleMute, f: toggleFs, c: toggleCaptions,
+    ArrowUp: () => setVolume(player.getVolume() + 5), ArrowDown: () => setVolume(player.getVolume() - 5), m: toggleMute, f: toggleFs, c: toggleCaptions, z: toggleFocus, n: () => quickNote(),
     '<': () => stepSpeed(-1), ',': () => stepSpeed(-1), '>': () => stepSpeed(1), '.': () => stepSpeed(1) };
   if (map[k]) { e.preventDefault(); map[k](); bumpControls(); }
 });
+
+// ---------- focus mode ----------
+let focusMode = false;
+function toggleFocus() {
+  focusMode = !focusMode;
+  const c = document.querySelector('.course'); if (c) c.classList.toggle('focus', focusMode);
+  if (focusMode) toast('Focus mode – press Z or Esc to exit');
+  bumpControls();
+}
+
+// ---------- end-of-lesson card (replaces YouTube's suggestion wall) ----------
+function showEnd(on) {
+  const c = $('endcard'); if (!c) return;
+  if (!on) { c.hidden = true; return; }
+  const last = cur >= C.lessons.length - 1, nxt = C.lessons[cur + 1];
+  c.innerHTML = `<div class="ec"><div class="ect">${last ? 'Course complete' : 'Lesson complete'}</div>
+    <div class="ecs">${esc(C.lessons[cur].title)}</div>
+    <div class="ecb">${last ? '' : `<button class="btn" id="ecNext">Next: ${esc(nxt.title)} ›</button>`}<button class="btn ghost light" id="ecAgain">Replay</button></div></div>`;
+  c.hidden = false;
+  const n = $('ecNext'); if (n) n.onclick = () => select(cur + 1);
+  $('ecAgain').onclick = () => { c.hidden = true; player.seekTo(0, true); player.playVideo(); };
+}
+
+// ---------- timestamped notes ----------
+let qnWasPlaying = false;
+function quickNote() {
+  if (!player || !player.getCurrentTime) return;
+  const box = $('qnote'); if (!box || !box.hidden) return;
+  const t = Math.floor(player.getCurrentTime()); qnWasPlaying = isPlaying; if (isPlaying) player.pauseVideo();
+  box.innerHTML = `<span class="qt">${fmtT(t)}</span><input id="qnIn" placeholder="Note at ${fmtT(t)} – Enter to save, Esc to cancel" maxlength="400" autocomplete="off"><button id="qnSave">Save</button>`;
+  box.hidden = false;
+  const inp = $('qnIn'); inp.focus();
+  const close = (save) => {
+    const v = inp.value.trim(); box.hidden = true;
+    if (save && v) {
+      const L = C.lessons[cur]; (L.marks = L.marks || []).push({ t, text: v }); L.marks.sort((x, y) => x.t - y.t);
+      queueSave(); if (tab === 'notes') renderPane(); toast('Note saved at ' + fmtT(t));
+    }
+    if (qnWasPlaying) player.playVideo();
+  };
+  inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') close(true); else if (e.key === 'Escape') close(false); };
+  $('qnSave').onclick = () => close(true);
+}
+function renderNotesPane(pane, L) {
+  L.marks = L.marks || [];
+  pane.innerHTML = `<h2>Notes for lesson ${cur + 1}</h2>
+    <div class="nrow"><button class="btn ghost" id="addMark">＋ Note at current time <kbd>N</kbd></button><button class="btn ghost" id="expNotes">Export all notes (.md)</button></div>
+    <div id="marks">${L.marks.length ? L.marks.map((m, i) => `<div class="mark"><button class="mt" data-seek="${m.t}" title="Jump to this moment">${fmtT(m.t)}</button><input class="mx" data-i="${i}" value="${esc(m.text)}"><button class="x" data-rm="${i}" title="Delete">${I.x}</button></div>`).join('') : '<div class="hint">No timestamped notes yet – press N while watching.</div>'}</div>
+    <h3 class="nh">General notes</h3>
+    <textarea class="notes" id="notes" placeholder="Write anything you want to remember…">${esc(L.notes)}</textarea>
+    <div class="hint">Saved automatically on this computer.</div>`;
+  $('addMark').onclick = () => quickNote();
+  $('expNotes').onclick = exportNotes;
+  pane.querySelectorAll('[data-seek]').forEach((b) => (b.onclick = () => { player && player.seekTo(+b.dataset.seek, true); }));
+  pane.querySelectorAll('.mx').forEach((inp) => (inp.oninput = () => { L.marks[+inp.dataset.i].text = inp.value; queueSave(); }));
+  pane.querySelectorAll('[data-rm]').forEach((b) => (b.onclick = () => { L.marks.splice(+b.dataset.rm, 1); queueSave(); renderNotesPane(pane, L); }));
+  const ta = $('notes'); ta.oninput = () => { L.notes = ta.value; queueSave(); };
+}
+function exportNotes() {
+  let md = `# ${C.title}\n\n`, any = false;
+  C.lessons.forEach((l, i) => {
+    const n = (l.notes || '').trim(); if (!n && !(l.marks && l.marks.length)) return;
+    any = true; md += `## ${i + 1}. ${l.title}\n\n`;
+    (l.marks || []).forEach((m) => (md += `- [${fmtT(m.t)}](https://youtu.be/${l.id}?t=${m.t}) ${m.text}\n`));
+    if (n) md += `\n${n}\n`;
+    md += '\n';
+  });
+  if (!any) return toast('No notes to export yet');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([md], { type: 'text/markdown' }));
+  a.download = (C.title.replace(/[^\w\- ]+/g, '').trim().slice(0, 60) || 'course') + ' - notes.md';
+  a.click();
+}
+
+// ---------- study timer (Pomodoro) + Do Not Disturb ----------
+const T = { phase: 'idle', left: 0, paused: false, sessions: 0, study: 1500, brk: 300, tm: null, dnd: null };
+const clock = (s) => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+function notify(title, body) { try { new Notification(title, { body, silent: false }); } catch {} toast(title + ' – ' + body); }
+async function setDndState(on) { const ok = await api.dnd(on); if (on) T.dnd = ok; }
+function beginPhase(ph) {
+  T.phase = ph; T.left = ph === 'study' ? T.study : T.brk; T.paused = false;
+  clearInterval(T.tm); T.tm = setInterval(timerTick, 1000);
+  if (ph === 'study') setDndState(true);
+  else { setDndState(false); try { player && player.pauseVideo(); } catch {} }
+  renderTimerUI();
+}
+function timerStart(studyMin, breakMin) { T.study = studyMin * 60; T.brk = breakMin * 60; T.sessions = 0; LS.set('timerPreset', [studyMin, breakMin]); beginPhase('study'); }
+function timerTick() {
+  if (T.paused) return;
+  if (--T.left > 0) return updateTimerChip();
+  if (T.phase === 'study') { T.sessions++; beginPhase('break'); notify('Break time', `Session ${T.sessions} done. Rest for ${Math.round(T.brk / 60)} min.`); }
+  else { beginPhase('study'); notify('Back to it', 'Break over – next study session started.'); }
+}
+function timerStop() { clearInterval(T.tm); T.phase = 'idle'; T.paused = false; setDndState(false); renderTimerUI(); }
+function timerPause() { T.paused = !T.paused; setDndState(T.phase === 'study' && !T.paused); renderTimerUI(); }
+function updateTimerChip() {
+  const txt = T.phase === 'idle' ? 'Timer' : (T.phase === 'study' ? '● ' : '☕ ') + clock(T.left) + (T.paused ? ' ⏸' : '');
+  const t = $('timerTxt'); if (t) t.textContent = txt;
+  const c = $('tchip'); if (c) { c.hidden = T.phase === 'idle'; c.textContent = txt; }
+}
+function renderTimerPop() {
+  const p = $('timerPop'); if (!p || p.hidden) return;
+  if (T.phase === 'idle') {
+    const last = LS.get('timerPreset', [25, 5]);
+    p.innerHTML = `<b>Study timer</b><small>${T.dnd === false ? 'Notification muting is only available on GNOME.' : 'Notifications are muted (Do Not Disturb) while you study.'}</small>
+      ${[[25, 5], [50, 10], [90, 15]].map(([s, b]) => `<button class="preset ${last[0] === s ? 'on' : ''}" data-s="${s}" data-b="${b}">${s} min study · ${b} min break</button>`).join('')}`;
+    p.querySelectorAll('.preset').forEach((b) => (b.onclick = () => { timerStart(+b.dataset.s, +b.dataset.b); }));
+  } else {
+    p.innerHTML = `<b>${T.phase === 'study' ? 'Studying' : 'Break'}</b><div class="big">${clock(T.left)}</div><small>Sessions done: ${T.sessions}</small>
+      <div class="prow"><button class="preset" id="tPause">${T.paused ? 'Resume' : 'Pause'}</button><button class="preset" id="tStop">Stop</button></div>`;
+    $('tPause').onclick = timerPause; $('tStop').onclick = timerStop;
+  }
+}
+function renderTimerUI() { updateTimerChip(); renderTimerPop(); }
+function wireTimer() {
+  const b = $('timerBtn'); if (!b) return;
+  b.onclick = (e) => { e.stopPropagation(); const p = $('timerPop'); p.hidden = !p.hidden; renderTimerPop(); };
+  updateTimerChip();
+}
+document.addEventListener('click', (e) => { const p = $('timerPop'); if (p && !p.hidden && !e.target.closest('.timerwrap')) p.hidden = true; });
+setInterval(() => { const p = $('timerPop'); if (p && !p.hidden && T.phase !== 'idle') renderTimerPop(); }, 1000);
 
 goHome();
