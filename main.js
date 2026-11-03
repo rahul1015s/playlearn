@@ -285,6 +285,7 @@ async function setDnd(on) {
   if (on) {
     const cur = await gs(['get', ...DND_KEY]);
     if (cur === null) return false; // not GNOME / gsettings missing
+    if (cur === 'false' && dndPrev === null) return true; // already muted by another app (e.g. Anchor): don't touch or restore it
     if (dndPrev === null) { dndPrev = cur; try { fs.writeFileSync(dndFile(), cur); } catch {} }
     await gs(['set', ...DND_KEY, 'false']);
     return true;
