@@ -22,6 +22,9 @@ Built with Electron. Developed and tested on Fedora.
 - **Ad blocking** – network rules for ad hosts plus an in-player ad skipper (best effort)
 - **Back button** on the course page (also `Esc` / `Alt+←`)
 
+- **Dark mode** – toggle in the top bar (sun/moon button); follows your system setting the first time and is remembered
+- **Offline downloads** – download any lesson (arrow next to it) or the whole course (Overview tab). Offline lessons play in the same custom player with no internet, no ads and no YouTube page around them, keep captions (English) when available, and are used automatically
+
 ### Built for studying without distractions
 
 - **Focus mode** (`Z`) – hides everything except the video; `Z` or `Esc` exits
@@ -95,6 +98,19 @@ lists the video's audio tracks, including YouTube's auto-dubbed languages. Choos
 language applies it to every lesson that offers it; choosing the original track clears the preference.
 Availability depends on the video – not every video has captions or dubs.
 
+## Offline downloads
+
+Downloads use `yt-dlp` and are saved next to your course data:
+
+```
+~/.config/Playlearn/downloads/<playlist-id>/<video-id>.mp4
+```
+
+- Click the **↓** button next to a lesson to download it, click it again while it downloads to cancel, or when done to remove it (confirm with a second click).
+- Overview tab → **Offline downloads**: download everything, cancel, open the folder, remove all.
+- Without `ffmpeg`, downloads are limited to 360p. For up to 720p: `sudo dnf install ffmpeg-free`.
+- Deleting a course also deletes its downloads. Please respect creators' rights and YouTube's Terms of Service; downloads are meant for your own offline study.
+
 ## Where is my data?
 
 Courses are plain JSON files:
@@ -113,11 +129,11 @@ the Home page (hover a card → bin icon → click again), or remove its file. B
 - `yt-dlp --flat-playlist -J` reads the playlist metadata (titles, durations).
 - The video plays through YouTube's embedded player, served from a small local HTTP server
   (YouTube blocks embeds from `file://`), with the default controls hidden and replaced by custom ones.
-- Videos stream from YouTube, so **watching needs an internet connection**; only course data is stored offline.
+- Videos stream from YouTube unless you download them, so **watching needs an internet connection** unless a lesson is saved offline.
 
 ## Limitations
 
-- Videos whose owners disabled embedding can't be played in the app.
+- Videos whose owners disabled embedding can't be streamed in the app (download them to play offline).
 - Private / deleted videos are skipped on import.
 - A course doesn't auto-refresh when the playlist changes – delete and re-add it.
 - Some ads are stitched into the stream and can't be blocked by URL; the skipper handles most of them.

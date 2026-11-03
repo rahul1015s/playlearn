@@ -28,6 +28,10 @@ const I = {
   vol: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z" fill="#fff"/><path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12"/></svg>',
   muted: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z" fill="#fff"/><path d="M17 9l5 6M22 9l-5 6"/></svg>',
   full: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
+  sun: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  moon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 13A9 9 0 1111 3a7 7 0 0010 10z"/></svg>',
+  dl: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>',
+  dlok: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>',
   focus: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 8V5a2 2 0 012-2h3M16 3h3a2 2 0 012 2v3M21 16v3a2 2 0 01-2 2h-3M8 21H5a2 2 0 01-2-2v-3"/></svg>',
   note: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5z"/><path d="M9 11h6M9 15h4"/></svg>',
   timer: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>',
@@ -67,7 +71,7 @@ async function goHome() {
   $app.innerHTML = `
   <div class="home">
     <div class="hero">
-      <div class="logo" style="margin-bottom:28px"><img src="icon.svg" width="30" height="30" alt="" style="border-radius:8px">Playlearn</div>
+      <div class="herotop"><div class="logo"><img src="icon.svg" width="30" height="30" alt="" style="border-radius:8px">Playlearn</div><button class="tb-btn themeBtn" title="Dark / light mode">${themeIcon()}</button></div>
       <h1>Turn any YouTube playlist into a course.</h1>
       <p>Paste a playlist link. Get a Udemy-style classroom with sections, progress tracking and notes – saved on this computer.</p>
       <form class="add" id="addForm">
@@ -133,6 +137,7 @@ async function openCourse(id) {
   destroyPlayer();
   C = await api.get(id);
   C.lastOpened = Date.now();
+  await loadDl();
   cur = Math.max(0, C.lessons.findIndex((l) => l.id === C.lastLesson));
   openSecs.clear(); openSecs.add(Math.floor(cur / SECTION_SIZE));
   tab = 'overview';
@@ -157,6 +162,7 @@ function renderCourse() {
       <div class="sep"></div>
       <div class="ctitle">${esc(C.title)}</div>
       <div class="prog" id="prog">${ringSvg(pct(C))}<span>${C.lessons.filter((l) => l.done).length}/${C.lessons.length} done</span></div>
+      <button class="tb-btn themeBtn" title="Dark / light mode">${themeIcon()}</button>
       <div class="timerwrap"><button class="tb-btn" id="timerBtn" title="Study timer">${I.timer}<span id="timerTxt">Timer</span></button><div class="pop" id="timerPop" hidden></div></div>
       <button class="tb-btn" id="toggleSide" title="Course content">${I.panel}</button>
     </div>
@@ -189,7 +195,7 @@ function renderCourse() {
           </div>
         </div>
         <div class="lesson-bar">
-          <span class="t">${cur + 1}. ${esc(L.title)}</span>
+          <span class="t">${cur + 1}. ${esc(L.title)}</span>${offBadge(L.id)}
           <label class="switch"><input type="checkbox" id="auto" ${autoNext ? 'checked' : ''}> Autoplay next</label>
           <button id="prev" ${cur === 0 ? 'disabled' : ''}>‹ Prev</button>
           <button id="next" ${cur === C.lessons.length - 1 ? 'disabled' : ''}>Next ›</button>
@@ -232,8 +238,10 @@ function renderPane() {
         <div><b>${fmtDur(left)}</b><span>Left to watch</span></div>
         <div><b>${pct(C)}%</b><span>Complete</span></div>
       </div>
-      <button class="btn ghost" id="syncBtn">Source playlist ↗</button>`;
+      <div id="dlbox"></div>
+      <button class="btn ghost" id="syncBtn" style="margin-top:22px">Source playlist ↗</button>`;
     document.getElementById('syncBtn').onclick = () => api.openExternal(C.url);
+    renderDlBox();
   }
 }
 function saveNotes() { const ta = document.getElementById('notes'); if (ta) { C.lessons[cur].notes = ta.value; queueSave(); } }
@@ -251,7 +259,7 @@ function renderList() {
         const i = a + k;
         return `<div class="item ${i === cur ? 'on' : ''}" data-i="${i}">
           <div class="cb ${l.done ? 'done' : ''}" data-cb="${i}">${l.done ? I.check : ''}</div>
-          <div><div class="t">${i + 1}. ${esc(l.title)}</div><div class="d">${I.playSm}${fmtDur(l.duration)}</div></div></div>`;
+          <div><div class="t">${i + 1}. ${esc(l.title)}</div><div class="d">${I.playSm}${fmtDur(l.duration)}<button class="dlb ${dlCls(l.id)}" data-dl="${l.id}" title="Download for offline">${dlIcon(l.id)}</button></div></div></div>`;
       }).join('')}</div></div>`;
   }
   const st = list.scrollTop;
@@ -261,6 +269,7 @@ function renderList() {
     const s = +b.parentElement.dataset.s; openSecs.has(s) ? openSecs.delete(s) : openSecs.add(s); b.parentElement.classList.toggle('open');
   }));
   list.querySelectorAll('.item').forEach((el) => (el.onclick = () => select(+el.dataset.i)));
+  list.querySelectorAll('[data-dl]').forEach((el) => (el.onclick = (e) => { e.stopPropagation(); onDlClick(el.dataset.dl, el); }));
   list.querySelectorAll('[data-cb]').forEach((el) => (el.onclick = (e) => { e.stopPropagation(); setDone(+el.dataset.cb, !C.lessons[+el.dataset.cb].done); }));
 }
 
@@ -289,44 +298,80 @@ function persistPos() {
     }
   } catch {}
 }
+const PS = { ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3 };
+let localMode = false;
 function mountPlayer() {
   const L = C.lessons[cur];
+  const handlers = {
+    onReady: () => wireControls(),
+    onStateChange: (e) => {
+      if (e.data === PS.PLAYING) applyPrefsOnce();
+      setPlayingUI(e.data === PS.PLAYING || e.data === PS.BUFFERING);
+      showEnd(e.data === PS.ENDED);
+      if (e.data === PS.PLAYING) {
+        clearInterval(tick);
+        tick = setInterval(() => {
+          persistPos();
+          try { // auto-complete at 92%
+            const d = player.getDuration(), t = player.getCurrentTime();
+            if (!L.done && d > 30 && t / d > 0.92) setDone(cur, true);
+          } catch {}
+          queueSave();
+        }, 4000);
+      } else clearInterval(tick);
+      if (e.data === PS.ENDED) {
+        L.pos = 0;
+        if (!L.done) setDone(cur, true);
+        if (autoNext && cur < C.lessons.length - 1) select(cur + 1);
+      }
+    },
+    onError: () => toast('This video cannot be played in the embedded player (embedding may be disabled by its owner). Download it for offline playback, or try the next lesson.', true),
+  };
+  const off = DL[L.id];
+  localMode = !!(off && off.state === 'done');
+  if (localMode) return makeLocalPlayer(L, off, handlers);
   const make = () => {
     player = new YT.Player('yt', {
       videoId: L.id, width: '100%', height: '100%',
       playerVars: { rel: 0, modestbranding: 1, autoplay: 1, controls: 0, disablekb: 1, fs: 0, iv_load_policy: 3, playsinline: 1, start: L.done ? 0 : L.pos || 0, enablejsapi: 1, origin: location.origin },
-      events: {
-        onReady: () => wireControls(),
-        onStateChange: (e) => {
-          if (e.data === YT.PlayerState.PLAYING) applyPrefsOnce();
-          setPlayingUI(e.data === YT.PlayerState.PLAYING || e.data === YT.PlayerState.BUFFERING);
-          showEnd(e.data === YT.PlayerState.ENDED);
-          if (e.data === YT.PlayerState.PLAYING) {
-            clearInterval(tick);
-            tick = setInterval(() => {
-              persistPos();
-              try { // auto-complete at 92%
-                const d = player.getDuration(), t = player.getCurrentTime();
-                if (!L.done && d > 30 && t / d > 0.92) setDone(cur, true);
-              } catch {}
-              queueSave();
-            }, 4000);
-          } else clearInterval(tick);
-          if (e.data === YT.PlayerState.ENDED) {
-            L.pos = 0;
-            if (!L.done) setDone(cur, true);
-            if (autoNext && cur < C.lessons.length - 1) select(cur + 1);
-          }
-        },
-        onError: () => toast('This video cannot be played in the embedded player (embedding may be disabled by its owner). Try the next lesson.', true),
-      },
+      events: handlers,
     });
   };
   if (window.YT && YT.Player) make();
   else {
-    const prev = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => { prev && prev(); make(); };
+    window.onYouTubeIframeAPIReady = make;
+    setTimeout(() => { if (!player) toast('Cannot reach YouTube. Download lessons for offline use (the arrow next to a lesson).', true); }, 7000);
   }
+}
+
+// Local <video> player exposing the same methods as the YouTube player, so every control works offline.
+function makeLocalPlayer(L, off, handlers) {
+  const host = $('yt'); host.innerHTML = '';
+  const v = document.createElement('video');
+  v.src = `/media/${encodeURIComponent(C.id)}/${encodeURIComponent(L.id)}.${off.ext}`;
+  v.preload = 'auto'; v.playsInline = true; v.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;background:#000';
+  if (off.sub) { const t = document.createElement('track'); t.kind = 'captions'; t.srclang = 'en'; t.label = 'English'; t.src = `/media/${encodeURIComponent(C.id)}/${encodeURIComponent(off.sub)}`; v.appendChild(t); }
+  host.appendChild(v);
+  let state = -1;
+  const emit = (s) => { state = s; handlers.onStateChange({ data: s }); };
+  v.addEventListener('playing', () => emit(PS.PLAYING));
+  v.addEventListener('pause', () => { if (!v.ended) emit(PS.PAUSED); });
+  v.addEventListener('ended', () => emit(PS.ENDED));
+  v.addEventListener('waiting', () => emit(PS.BUFFERING));
+  v.addEventListener('error', () => { toast('Could not play the downloaded file. Remove the download and stream it instead.', true); });
+  v.addEventListener('loadedmetadata', () => { const s = L.done ? 0 : L.pos || 0; if (s > 0 && s < v.duration - 5) v.currentTime = s; v.play().catch(() => {}); });
+  player = {
+    _video: v, isLocal: true,
+    getPlayerState: () => state, playVideo: () => v.play().catch(() => {}), pauseVideo: () => v.pause(),
+    getCurrentTime: () => v.currentTime || 0, getDuration: () => (isFinite(v.duration) ? v.duration : 0), seekTo: (t) => { v.currentTime = t; },
+    setVolume: (x) => { v.volume = Math.max(0, Math.min(1, x / 100)); }, getVolume: () => Math.round(v.volume * 100),
+    mute: () => { v.muted = true; }, unMute: () => { v.muted = false; }, isMuted: () => v.muted,
+    setPlaybackRate: (r) => { v.playbackRate = r; }, getPlaybackRate: () => v.playbackRate,
+    getAvailablePlaybackRates: () => [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3],
+    getVideoLoadedFraction: () => (v.duration && v.buffered.length ? v.buffered.end(v.buffered.length - 1) / v.duration : 0),
+    destroy: () => { try { v.pause(); v.removeAttribute('src'); v.load(); } catch {} },
+  };
+  handlers.onReady();
 }
 
 window.addEventListener('beforeunload', () => { persistPos(); flushSave(); });
@@ -402,20 +447,20 @@ function toggleMenu(id, html, bind) {
   m.innerHTML = html; m.hidden = false; bind(m);
 }
 async function openCcMenu() {
-  const d = await api.playerOp('ccList');
+  const d = await pOp('ccList');
   const pref = LS.get('cc', { on: false, lang: null });
   let html = `<button data-c="" class="${!d || !d.cur ? 'on' : ''}">Off</button>`;
   if (!d || !d.tracks.length) html += `<button disabled style="opacity:.6">No captions available</button>`;
   else html += d.tracks.map((t) => `<button data-c="${esc(t.code)}" class="${d.cur === t.code ? 'on' : ''}">${esc(t.name)}</button>`).join('');
   toggleMenu('ccMenu', html, (m) => m.querySelectorAll('button[data-c]').forEach((b) => (b.onclick = async () => {
     const code = b.dataset.c;
-    if (code) { await api.playerOp('ccSet', code); LS.set('cc', { on: true, lang: code }); } else { await api.playerOp('ccOff'); LS.set('cc', { on: false, lang: pref.lang }); }
+    if (code) { await pOp('ccSet', code); LS.set('cc', { on: true, lang: code }); } else { await pOp('ccOff'); LS.set('cc', { on: false, lang: pref.lang }); }
     closeMenus(); markCc();
   })));
 }
 async function toggleCaptions() {
   const pref = LS.get('cc', { on: false, lang: null });
-  if (pref.on) { await api.playerOp('ccOff'); LS.set('cc', { on: false, lang: pref.lang }); }
+  if (pref.on) { await pOp('ccOff'); LS.set('cc', { on: false, lang: pref.lang }); }
   else { await applyCaptions(true); }
   markCc();
 }
@@ -423,21 +468,21 @@ function markCc() { const b = $('ccBtn'); if (b) b.classList.toggle('active', LS
 async function applyCaptions(force) {
   const pref = LS.get('cc', { on: false, lang: null });
   if (!pref.on && !force) return true;
-  const d = await api.playerOp('ccList');
+  const d = await pOp('ccList');
   if (!d || !d.tracks.length) return false;
   const pick = d.tracks.find((t) => t.code === pref.lang) || d.tracks.find((t) => /^en/.test(t.code)) || d.tracks[0];
-  await api.playerOp('ccSet', pick.code); LS.set('cc', { on: true, lang: pick.code });
+  await pOp('ccSet', pick.code); LS.set('cc', { on: true, lang: pick.code });
   return true;
 }
 async function openDubMenu() {
-  const d = await api.playerOp('audioList');
+  const d = await pOp('audioList');
   const pref = LS.get('audio', { name: null });
   let html;
   if (!d || d.tracks.length < 2) html = `<button disabled style="opacity:.6">No other audio tracks for this video</button>`;
   else html = d.tracks.map((t) => `<button data-a="${t.i}" class="${d.cur === t.i ? 'on' : ''}">${esc(t.name)}${t.dubbed ? ' <small style="opacity:.7">· auto-dubbed</small>' : ''}</button>`).join('');
   toggleMenu('dubMenu', html, (m) => m.querySelectorAll('button[data-a]').forEach((b) => (b.onclick = async () => {
     const t = d.tracks[+b.dataset.a];
-    await api.playerOp('audioSet', t.i);
+    await pOp('audioSet', t.i);
     LS.set('audio', { name: t.dubbed ? t.name : null }); // original => no preference
     closeMenus(); markDub(t.dubbed);
     toast(t.dubbed ? 'Audio: ' + t.name + ' (auto-dubbed) – used for all lessons when available' : 'Audio: original');
@@ -447,10 +492,10 @@ function markDub(on) { const b = $('dubBtn'); if (b) b.classList.toggle('active'
 async function applyAudio() {
   const pref = LS.get('audio', { name: null });
   if (!pref.name) return true;
-  const d = await api.playerOp('audioList');
+  const d = await pOp('audioList');
   if (!d || !d.tracks.length) return false;
   const t = d.tracks.find((x) => x.name === pref.name);
-  if (t && d.cur !== t.i) await api.playerOp('audioSet', t.i);
+  if (t && d.cur !== t.i) await pOp('audioSet', t.i);
   markDub(!!t);
   return true;
 }
@@ -602,5 +647,86 @@ function wireTimer() {
 }
 document.addEventListener('click', (e) => { const p = $('timerPop'); if (p && !p.hidden && !e.target.closest('.timerwrap')) p.hidden = true; });
 setInterval(() => { const p = $('timerPop'); if (p && !p.hidden && T.phase !== 'idle') renderTimerPop(); }, 1000);
+
+// ---------- local (offline) captions/audio shim ----------
+async function pOp(op, arg) {
+  if (!localMode) return api.playerOp(op, arg);
+  const v = player && player._video; if (!v) return null;
+  const tt = [...v.textTracks];
+  if (op === 'ccList') { const sh = tt.find((t) => t.mode === 'showing'); return { tracks: tt.map((t) => ({ code: t.language || 'en', name: t.label || 'English', kind: '', tr: false })), cur: sh ? sh.language || 'en' : null }; }
+  if (op === 'ccSet') { tt.forEach((t) => (t.mode = (t.language || 'en') === arg ? 'showing' : 'disabled')); return true; }
+  if (op === 'ccOff') { tt.forEach((t) => (t.mode = 'disabled')); return true; }
+  if (op === 'audioList') return { tracks: [{ i: 0, name: 'Original', dubbed: false, def: true }], cur: 0 };
+  return true;
+}
+
+// ---------- theme ----------
+const themeIcon = () => (document.documentElement.dataset.theme === 'dark' ? I.sun : I.moon);
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.themeBtn')) return;
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next; LS.set('theme', next);
+  document.querySelectorAll('.themeBtn').forEach((b) => (b.innerHTML = themeIcon()));
+});
+
+// ---------- offline downloads ----------
+let DL = {}, FF = false;
+const fmtBytes = (n) => (n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : n >= 1e6 ? Math.round(n / 1e6) + ' MB' : Math.round(n / 1e3) + ' KB');
+async function loadDl() {
+  DL = {};
+  try {
+    const r = await api.dlList(C.id); FF = r.ffmpeg;
+    for (const [v, f] of Object.entries(r.files)) DL[v] = { state: 'done', ...f };
+    for (const [v, s] of Object.entries(r.active)) DL[v] = { ...s };
+  } catch {}
+}
+const dlCount = () => C.lessons.filter((l) => DL[l.id] && DL[l.id].state === 'done').length;
+const dlBusy = () => C.lessons.filter((l) => DL[l.id] && (DL[l.id].state === 'queued' || DL[l.id].state === 'downloading')).length;
+function dlIcon(id) {
+  const d = DL[id]; if (!d) return I.dl;
+  if (d.state === 'done') return I.dlok; if (d.state === 'queued') return '…';
+  if (d.state === 'downloading') return Math.round(d.pct || 0) + '%'; if (d.state === 'error') return '!';
+  return I.dl;
+}
+const dlCls = (id) => { const d = DL[id]; return !d ? '' : d.state === 'done' ? 'ok' : d.state === 'error' ? 'err' : 'busy'; };
+const offBadge = (id) => (DL[id] && DL[id].state === 'done' ? '<span class="offbadge">Offline</span>' : '');
+function updateDlIcon(vid) {
+  const b = document.querySelector(`[data-dl="${vid}"]`); if (!b) return;
+  b.innerHTML = dlIcon(vid); b.className = 'dlb ' + dlCls(vid);
+  b.title = DL[vid] && DL[vid].state === 'error' ? DL[vid].error || 'Failed – click to retry' : 'Download for offline';
+}
+async function onDlClick(vid, btn) {
+  const d = DL[vid];
+  if (!d || d.state === 'error') { delete DL[vid]; return api.dlStart(C.id, [vid]); }
+  if (d.state === 'queued' || d.state === 'downloading') return api.dlCancel(C.id, vid);
+  if (btn.dataset.confirm !== '1') { btn.dataset.confirm = '1'; btn.textContent = 'Remove?'; setTimeout(() => { btn.dataset.confirm = ''; updateDlIcon(vid); }, 2500); return; }
+  await api.dlDelete(C.id, vid); delete DL[vid]; updateDlIcon(vid); renderDlBox();
+}
+function renderDlBox() {
+  const b = $('dlbox'); if (!b) return;
+  const n = C.lessons.length, done = dlCount(), busy = dlBusy();
+  const bytes = Object.values(DL).reduce((s, d) => s + (d.state === 'done' ? d.size || 0 : 0), 0);
+  b.innerHTML = `<h3 class="nh">Offline downloads</h3>
+    <p class="hint" style="margin:0 0 12px">${done} of ${n} lessons saved on this computer${bytes ? ' · ' + fmtBytes(bytes) : ''}${busy ? ' · ' + busy + ' in progress' : ''}. Offline lessons play without internet, ads, or YouTube around them.</p>
+    <div class="nrow"><button class="btn ghost" id="dlAll" ${done + busy >= n ? 'disabled' : ''}>Download all remaining</button>
+      ${busy ? '<button class="btn ghost" id="dlCancel">Cancel downloads</button>' : ''}
+      ${done ? '<button class="btn ghost" id="dlOpen">Open folder</button><button class="btn ghost" id="dlRemove">Remove all downloads</button>' : ''}</div>
+    ${FF ? '' : '<p class="hint">Without ffmpeg, downloads are 360p. For up to 720p: <code>sudo dnf install ffmpeg-free</code></p>'}`;
+  $('dlAll').onclick = () => api.dlStart(C.id, C.lessons.filter((l) => !DL[l.id] || DL[l.id].state === 'error').map((l) => l.id));
+  const cb = $('dlCancel'); if (cb) cb.onclick = () => api.dlCancel(C.id);
+  const ob = $('dlOpen'); if (ob) ob.onclick = () => api.dlOpen(C.id);
+  const rb = $('dlRemove'); if (rb) rb.onclick = async () => {
+    if (rb.dataset.c !== '1') { rb.dataset.c = '1'; rb.textContent = 'Click again to remove all'; setTimeout(renderDlBox, 2500); return; }
+    await api.dlDelete(C.id); DL = {}; renderList(); renderDlBox();
+  };
+}
+api.onDlProgress((e) => {
+  if (!C || e.cid !== C.id) return;
+  if (e.state === 'canceled') delete DL[e.vid];
+  else DL[e.vid] = { state: e.state, pct: e.pct, size: e.size, ext: e.ext, sub: e.sub, error: e.error };
+  updateDlIcon(e.vid);
+  if (e.state !== 'downloading') renderDlBox();
+  if (e.state === 'error') toast('Download failed: ' + (e.error || 'unknown error'), true);
+});
 
 goHome();

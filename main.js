@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { execFile, execFileSync } = require('child_process');
+const { execFile, execFileSync, spawn } = require('child_process');
 
 const RENDERER = path.join(__dirname, 'renderer');
 let win = null;
@@ -91,11 +91,26 @@ async function importPlaylist(input, send) {
 }
 
 // ---------- local server (YouTube embeds refuse file:// origins) ----------
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
+const MIME = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.mkv': 'video/x-matroska', '.vtt': 'text/vtt', '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
 function startServer() {
   return new Promise((resolve) => {
     const srv = http.createServer((req, res) => {
       const rel = decodeURIComponent(req.url.split('?')[0]);
+      const mm = /^\/media\/([\w-]+)\/([\w.-]+\.(?:mp4|mkv|webm|vtt))$/.exec(rel);
+      if (mm) {
+        const f = path.join(dlDir(mm[1]), path.basename(mm[2]));
+        if (!fs.existsSync(f)) { res.writeHead(404); return res.end(); }
+        const size = fs.statSync(f).size, type = MIME[path.extname(f)] || 'application/octet-stream';
+        const r = /bytes=(\d*)-(\d*)/.exec(req.headers.range || '');
+        if (r) {
+          const s = r[1] ? +r[1] : 0, e = Math.min(r[2] ? +r[2] : size - 1, size - 1);
+          if (s > e || s >= size) { res.writeHead(416, { 'Content-Range': `bytes */${size}` }); return res.end(); }
+          res.writeHead(206, { 'Content-Range': `bytes ${s}-${e}/${size}`, 'Accept-Ranges': 'bytes', 'Content-Length': e - s + 1, 'Content-Type': type });
+          return fs.createReadStream(f, { start: s, end: e }).pipe(res);
+        }
+        res.writeHead(200, { 'Content-Length': size, 'Accept-Ranges': 'bytes', 'Content-Type': type });
+        return fs.createReadStream(f).pipe(res);
+      }
       const f = path.normalize(path.join(RENDERER, rel === '/' ? 'index.html' : rel));
       if (!f.startsWith(RENDERER) || !fs.existsSync(f)) { res.writeHead(404); return res.end(); }
       res.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream' });
@@ -132,6 +147,92 @@ const AD_SKIPPER = `(() => {
   };
   setInterval(tick, 250);
 })();`;
+// ---------- offline downloads (yt-dlp) ----------
+const dlDir = (cid) => path.join(app.getPath('userData'), 'downloads', String(cid).replace(/[^\w-]/g, ''));
+const okId = (s) => /^[\w-]+$/.test(String(s || ''));
+const findBin = (name) => { for (const p of (process.env.PATH || '').split(':')) { const f = path.join(p, name); if (fs.existsSync(f)) return f; } return null; };
+function dlScan(cid) {
+  const dir = dlDir(cid), out = {};
+  if (!fs.existsSync(dir)) return out;
+  const files = fs.readdirSync(dir);
+  for (const f of files) {
+    const mt = /^([\w-]+)\.(mp4|mkv|webm)$/.exec(f); if (!mt) continue;
+    const subs = files.filter((x) => x.startsWith(mt[1] + '.') && x.endsWith('.vtt')).sort((a, b) => (/\.en\.vtt$/.test(b) ? 1 : 0) - (/\.en\.vtt$/.test(a) ? 1 : 0));
+    out[mt[1]] = { ext: mt[2], size: fs.statSync(path.join(dir, f)).size, sub: subs[0] || null };
+  }
+  return out;
+}
+const dlQueue = []; let dlCur = null; const dlActive = {};
+function dlEmit(job, state, pct, extra = {}) {
+  const k = job.cid + '/' + job.vid;
+  if (state === 'queued' || state === 'downloading') dlActive[k] = { state, pct: pct || 0 }; else delete dlActive[k];
+  if (win && !win.isDestroyed()) win.webContents.send('dl:progress', { cid: job.cid, vid: job.vid, state, pct: pct || 0, ...extra });
+}
+function dlWipe(cid, vid) {
+  const dir = dlDir(cid); if (!fs.existsSync(dir)) return;
+  for (const f of fs.readdirSync(dir)) if (f.startsWith(vid + '.')) fs.rmSync(path.join(dir, f), { force: true });
+}
+async function dlNext() {
+  if (dlCur || !dlQueue.length) return;
+  const job = dlQueue.shift(); dlCur = job; dlEmit(job, 'downloading', 0);
+  let bin;
+  try { bin = await ensureYtDlp(() => {}); } catch (e) { dlCur = null; dlEmit(job, 'error', 0, { error: e.message }); return dlNext(); }
+  const dir = dlDir(job.cid); fs.mkdirSync(dir, { recursive: true });
+  const ff = !!findBin('ffmpeg');
+  const fmt = ff ? 'bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]/b[height<=720]' : 'b[height<=720][ext=mp4]/b[ext=mp4]/b';
+  const args = ['--no-playlist', '--newline', '--no-warnings', '-f', fmt, '-o', path.join(dir, job.vid + '.%(ext)s'),
+    '--write-subs', '--write-auto-subs', '--sub-langs', 'en', '--sub-format', 'vtt', '--retries', '5', '--concurrent-fragments', '4',
+    ...(ff ? ['--merge-output-format', 'mp4'] : []), 'https://www.youtube.com/watch?v=' + job.vid];
+  const proc = spawn(bin, args); job.proc = proc; let last = '', lastPct = -1;
+  const onData = (b) => {
+    const s = b.toString(); const ln = s.trim().split('\n').pop(); if (ln) last = ln;
+    const hit = [...s.matchAll(/\[download\]\s+([\d.]+)%/g)].pop();
+    if (hit && Math.floor(+hit[1]) !== lastPct) { lastPct = Math.floor(+hit[1]); dlEmit(job, 'downloading', +hit[1]); }
+  };
+  proc.stdout.on('data', onData); proc.stderr.on('data', onData);
+  proc.on('error', (e) => { last = e.message; });
+  proc.on('close', () => {
+    dlCur = null;
+    if (job.canceled) { dlWipe(job.cid, job.vid); dlEmit(job, 'canceled'); }
+    else {
+      const info = dlScan(job.cid)[job.vid];
+      if (info) dlEmit(job, 'done', 100, info);
+      else { dlWipe(job.cid, job.vid); dlEmit(job, 'error', 0, { error: last.replace(/^ERROR:\s*/, '').slice(0, 200) || 'Download failed' }); }
+    }
+    dlNext();
+  });
+}
+function dlCancel(cid, vid) {
+  for (let i = dlQueue.length - 1; i >= 0; i--) {
+    const j = dlQueue[i];
+    if (j.cid === cid && (!vid || j.vid === vid)) { dlQueue.splice(i, 1); dlEmit(j, 'canceled'); }
+  }
+  if (dlCur && dlCur.cid === cid && (!vid || dlCur.vid === vid)) { dlCur.canceled = true; try { dlCur.proc.kill('SIGTERM'); } catch {} }
+}
+ipcMain.handle('dl:list', (_e, cid) => {
+  if (!okId(cid)) return { files: {}, active: {}, ffmpeg: false };
+  const active = {};
+  for (const [k, v] of Object.entries(dlActive)) if (k.startsWith(cid + '/')) active[k.slice(cid.length + 1)] = v;
+  return { files: dlScan(cid), active, ffmpeg: !!findBin('ffmpeg') };
+});
+ipcMain.handle('dl:start', (_e, cid, vids) => {
+  if (!okId(cid) || !Array.isArray(vids)) return false;
+  const have = dlScan(cid);
+  for (const vid of vids) {
+    if (!VID_RE.test(vid) || have[vid] || dlActive[cid + '/' + vid]) continue;
+    const job = { cid, vid }; dlQueue.push(job); dlEmit(job, 'queued');
+  }
+  dlNext(); return true;
+});
+ipcMain.handle('dl:cancel', (_e, cid, vid) => { if (okId(cid)) dlCancel(cid, vid && VID_RE.test(vid) ? vid : undefined); return true; });
+ipcMain.handle('dl:delete', (_e, cid, vid) => {
+  if (!okId(cid)) return false;
+  if (vid && VID_RE.test(vid)) dlWipe(cid, vid); else { dlCancel(cid); fs.rmSync(dlDir(cid), { recursive: true, force: true }); }
+  return true;
+});
+ipcMain.handle('dl:open', (_e, cid) => { if (!okId(cid)) return ''; fs.mkdirSync(dlDir(cid), { recursive: true }); return shell.openPath(dlDir(cid)); });
+const VID_RE = /^[\w-]{6,20}$/;
+
 // ---------- Do Not Disturb while studying (GNOME) ----------
 const DND_KEY = ['org.gnome.desktop.notifications', 'show-banners'];
 const dndFile = () => path.join(app.getPath('userData'), 'dnd-prev');
@@ -245,7 +346,7 @@ else {
     ipcMain.handle('courses:list', () => listCourses());
     ipcMain.handle('courses:get', (_e, id) => readCourse(id));
     ipcMain.handle('courses:save', (_e, c) => { writeCourse(c); return true; });
-    ipcMain.handle('courses:delete', (_e, id) => { fs.rmSync(courseFile(id), { force: true }); return true; });
+    ipcMain.handle('courses:delete', (_e, id) => { if (okId(id)) { dlCancel(id); fs.rmSync(dlDir(id), { recursive: true, force: true }); } fs.rmSync(courseFile(id), { force: true }); return true; });
     ipcMain.handle('courses:import', async (e, url) => {
       try { return { ok: true, course: await importPlaylist(url, (m) => e.sender.send('import-status', m)) }; }
       catch (err) { return { ok: false, error: err.message }; }
