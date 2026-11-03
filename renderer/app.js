@@ -32,6 +32,7 @@ const I = {
   moon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 13A9 9 0 1111 3a7 7 0 0010 10z"/></svg>',
   dl: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>',
   dlok: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>',
+  chap: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
   focus: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 8V5a2 2 0 012-2h3M16 3h3a2 2 0 012 2v3M21 16v3a2 2 0 01-2 2h-3M8 21H5a2 2 0 01-2-2v-3"/></svg>',
   note: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h10l4 4v14H5z"/><path d="M9 11h6M9 15h4"/></svg>',
   timer: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg>',
@@ -138,6 +139,7 @@ async function openCourse(id) {
   C = await api.get(id);
   C.lastOpened = Date.now();
   await loadDl();
+  query = '';
   cur = Math.max(0, C.lessons.findIndex((l) => l.id === C.lastLesson));
   openSecs.clear(); openSecs.add(Math.floor(cur / SECTION_SIZE));
   tab = 'overview';
@@ -176,15 +178,16 @@ function renderCourse() {
           <div class="endcard" id="endcard" hidden></div>
           <div class="qnote" id="qnote" hidden></div>
           <div class="controls" id="controls">
-            <input type="range" class="seek" id="seek" min="0" max="1000" value="0" step="1">
+            <div class="seekwrap" id="seekwrap"><div class="ticks" id="ticks"></div><input type="range" class="seek" id="seek" min="0" max="1000" value="0" step="1"><div class="seektip" id="seektip" hidden></div></div>
             <div class="crow">
               <button class="cb2" id="pp" title="Play/Pause (Space)"></button>
               <button class="cb2" id="back10" title="Back 10s (J)">${I.back10}</button>
               <button class="cb2" id="fwd10" title="Forward 10s (L)">${I.fwd10}</button>
               <button class="cb2" id="mute" title="Mute (M)"></button>
               <input type="range" class="vol" id="vol" min="0" max="100" value="100">
-              <span class="time"><span id="tcur">0:00</span> / <span id="tdur">0:00</span></span>
+              <span class="time"><span id="tcur">0:00</span> / <span id="tdur">0:00</span><span class="chname" id="chName"></span></span>
               <span class="grow"></span>
+              <div class="speedwrap" id="chWrap" hidden><button class="cb2" id="chBtn" title="Chapters ( [ and ] )">${I.chap}</button><div class="menu chmenu" id="chMenu" hidden></div></div>
               <button class="cb2" id="noteBtn" title="Add note at this moment (N)">${I.note}</button>
               <div class="speedwrap"><button class="cb2" id="ccBtn" title="Captions (C)">${I.cc}</button><div class="menu" id="ccMenu" hidden></div></div>
               <div class="speedwrap"><button class="cb2" id="dubBtn" title="Audio / auto-dubbed">${I.dub}</button><div class="menu" id="dubMenu" hidden></div></div>
@@ -208,6 +211,7 @@ function renderCourse() {
       </div>
       <aside class="side ${sideOpen ? '' : 'closed'}" id="side">
         <div class="side-h"><b>Course content</b><button class="x" id="closeSide" title="Close">${I.x}</button></div>
+        <div class="searchbar"><input id="lsearch" type="search" placeholder="Search lessons, notes, chapters   ( / )" autocomplete="off" value="${esc(query)}"></div>
         <div class="list" id="list"></div>
       </aside>
     </div>
@@ -220,6 +224,7 @@ function renderCourse() {
   document.getElementById('prev').onclick = () => select(cur - 1);
   document.getElementById('next').onclick = () => select(cur + 1);
   $app.querySelectorAll('.tab').forEach((b) => (b.onclick = () => { saveNotes(); tab = b.dataset.tab; $app.querySelectorAll('.tab').forEach((x) => x.classList.toggle('on', x === b)); renderPane(); }));
+  { const si = document.getElementById('lsearch'); si.oninput = () => { query = si.value; renderList(); }; si.onkeydown = (e) => { if (e.key === 'Escape') { e.stopPropagation(); si.value = ''; query = ''; renderList(); si.blur(); } }; }
   renderList(); renderPane(); wireTimer(); mountPlayer();
 }
 
@@ -246,21 +251,46 @@ function renderPane() {
 }
 function saveNotes() { const ta = document.getElementById('notes'); if (ta) { C.lessons[cur].notes = ta.value; queueSave(); } }
 
+let query = '', pendingSeek = null;
+const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const qWords = () => query.toLowerCase().split(/\s+/).filter(Boolean);
+function hl(text, ws) {
+  const s = esc(text); if (!ws || !ws.length) return s;
+  return s.replace(new RegExp('(' + ws.map((w) => escRe(esc(w))).join('|') + ')', 'gi'), '<mark>$1</mark>');
+}
+function matchLesson(l, ws) {
+  const hit = (s) => !!s && ws.every((w) => s.toLowerCase().includes(w));
+  if (hit(l.title)) return { kind: 'title' };
+  if (hit(l.notes)) { const n = l.notes, k = Math.max(0, n.toLowerCase().indexOf(ws[0]) - 30); return { kind: 'note', text: (k ? '…' : '') + n.slice(k, k + 90) }; }
+  for (const m of l.marks || []) if (hit(m.text)) return { kind: 'mark', t: m.t, text: m.text };
+  for (const c of l.chapters || []) if (hit(c.title)) return { kind: 'chapter', t: c.t, text: c.title };
+  return null;
+}
+function itemHtml(l, i, m, ws) {
+  const label = m && m.kind !== 'title' ? ({ note: 'Notes', mark: 'Note', chapter: 'Chapter' }[m.kind]) : '';
+  return `<div class="item ${i === cur ? 'on' : ''}" data-i="${i}" ${m && m.t != null ? `data-t="${m.t}"` : ''}>
+    <div class="cb ${l.done ? 'done' : ''}" data-cb="${i}">${l.done ? I.check : ''}</div>
+    <div><div class="t">${i + 1}. ${hl(l.title, ws)}</div>
+    ${label ? `<div class="snip">${label}${m.t != null ? ' · ' + fmtT(m.t) : ''}: ${hl(m.text, ws)}</div>` : ''}
+    <div class="d">${I.playSm}${fmtDur(l.duration)}<button class="dlb ${dlCls(l.id)}" data-dl="${l.id}" title="Download for offline">${dlIcon(l.id)}</button></div></div></div>`;
+}
 function renderList() {
   const list = document.getElementById('list');
-  const n = Math.ceil(C.lessons.length / SECTION_SIZE);
+  const ws = qWords();
   let html = '';
-  for (let s = 0; s < n; s++) {
-    const a = s * SECTION_SIZE, items = C.lessons.slice(a, a + SECTION_SIZE);
-    const done = items.filter((l) => l.done).length, dur = items.reduce((x, l) => x + l.duration, 0);
-    html += `<div class="sec ${openSecs.has(s) ? 'open' : ''}" data-s="${s}">
+  if (ws.length) {
+    const res = [];
+    C.lessons.forEach((l, i) => { const m = matchLesson(l, ws); if (m) res.push(itemHtml(l, i, m, ws)); });
+    html = res.length ? `<div class="results-h">${res.length} result${res.length === 1 ? '' : 's'}</div>${res.join('')}` : `<div class="nores">No lessons, notes or chapters match “${esc(query)}”.</div>`;
+  } else {
+    const n = Math.ceil(C.lessons.length / SECTION_SIZE);
+    for (let s = 0; s < n; s++) {
+      const a = s * SECTION_SIZE, items = C.lessons.slice(a, a + SECTION_SIZE);
+      const done = items.filter((l) => l.done).length, dur = items.reduce((x, l) => x + l.duration, 0);
+      html += `<div class="sec ${openSecs.has(s) ? 'open' : ''}" data-s="${s}">
       <button class="sec-h"><div><b>Section ${s + 1}: Lessons ${a + 1}–${a + items.length}</b><small>${done} / ${items.length} | ${fmtDur(dur)}</small></div>${I.chev}</button>
-      <div class="items">${items.map((l, k) => {
-        const i = a + k;
-        return `<div class="item ${i === cur ? 'on' : ''}" data-i="${i}">
-          <div class="cb ${l.done ? 'done' : ''}" data-cb="${i}">${l.done ? I.check : ''}</div>
-          <div><div class="t">${i + 1}. ${esc(l.title)}</div><div class="d">${I.playSm}${fmtDur(l.duration)}<button class="dlb ${dlCls(l.id)}" data-dl="${l.id}" title="Download for offline">${dlIcon(l.id)}</button></div></div></div>`;
-      }).join('')}</div></div>`;
+      <div class="items">${items.map((l, k) => itemHtml(l, a + k, null, null)).join('')}</div></div>`;
+    }
   }
   const st = list.scrollTop;
   list.innerHTML = html;
@@ -268,7 +298,12 @@ function renderList() {
   list.querySelectorAll('.sec-h').forEach((b) => (b.onclick = () => {
     const s = +b.parentElement.dataset.s; openSecs.has(s) ? openSecs.delete(s) : openSecs.add(s); b.parentElement.classList.toggle('open');
   }));
-  list.querySelectorAll('.item').forEach((el) => (el.onclick = () => select(+el.dataset.i)));
+  list.querySelectorAll('.item').forEach((el) => (el.onclick = () => {
+    const i = +el.dataset.i, t = el.dataset.t === undefined ? null : +el.dataset.t;
+    if (t !== null && i === cur && player) { player.seekTo(t, true); return; }
+    if (t !== null) pendingSeek = { id: C.lessons[i].id, t };
+    select(i);
+  }));
   list.querySelectorAll('[data-dl]').forEach((el) => (el.onclick = (e) => { e.stopPropagation(); onDlClick(el.dataset.dl, el); }));
   list.querySelectorAll('[data-cb]').forEach((el) => (el.onclick = (e) => { e.stopPropagation(); setDone(+el.dataset.cb, !C.lessons[+el.dataset.cb].done); }));
 }
@@ -329,11 +364,14 @@ function mountPlayer() {
   };
   const off = DL[L.id];
   localMode = !!(off && off.state === 'done');
-  if (localMode) return makeLocalPlayer(L, off, handlers);
+  const startAt = pendingSeek && pendingSeek.id === L.id ? pendingSeek.t : L.done ? 0 : L.pos || 0;
+  pendingSeek = null;
+  loadChapters(L);
+  if (localMode) return makeLocalPlayer(L, off, handlers, startAt);
   const make = () => {
     player = new YT.Player('yt', {
       videoId: L.id, width: '100%', height: '100%',
-      playerVars: { rel: 0, modestbranding: 1, autoplay: 1, controls: 0, disablekb: 1, fs: 0, iv_load_policy: 3, playsinline: 1, start: L.done ? 0 : L.pos || 0, enablejsapi: 1, origin: location.origin },
+      playerVars: { rel: 0, modestbranding: 1, autoplay: 1, controls: 0, disablekb: 1, fs: 0, iv_load_policy: 3, playsinline: 1, start: startAt, enablejsapi: 1, origin: location.origin },
       events: handlers,
     });
   };
@@ -345,7 +383,7 @@ function mountPlayer() {
 }
 
 // Local <video> player exposing the same methods as the YouTube player, so every control works offline.
-function makeLocalPlayer(L, off, handlers) {
+function makeLocalPlayer(L, off, handlers, startAt) {
   const host = $('yt'); host.innerHTML = '';
   const v = document.createElement('video');
   v.src = `/media/${encodeURIComponent(C.id)}/${encodeURIComponent(L.id)}.${off.ext}`;
@@ -359,7 +397,7 @@ function makeLocalPlayer(L, off, handlers) {
   v.addEventListener('ended', () => emit(PS.ENDED));
   v.addEventListener('waiting', () => emit(PS.BUFFERING));
   v.addEventListener('error', () => { toast('Could not play the downloaded file. Remove the download and stream it instead.', true); });
-  v.addEventListener('loadedmetadata', () => { const s = L.done ? 0 : L.pos || 0; if (s > 0 && s < v.duration - 5) v.currentTime = s; v.play().catch(() => {}); });
+  v.addEventListener('loadedmetadata', () => { const s = startAt || 0; if (s > 0 && s < v.duration - 5) v.currentTime = s; v.play().catch(() => {}); });
   player = {
     _video: v, isLocal: true,
     getPlayerState: () => state, playVideo: () => v.play().catch(() => {}), pauseVideo: () => v.pause(),
@@ -417,6 +455,15 @@ function wireControls() {
   };
   $('ccBtn').onclick = () => openCcMenu();
   $('dubBtn').onclick = () => openDubMenu();
+  $('chBtn').onclick = () => openChMenu();
+  { const sw = $('seekwrap'), tip = $('seektip');
+    sw.onmousemove = (e) => {
+      const r = sw.getBoundingClientRect(), d = player.getDuration() || 0;
+      const f = Math.max(0, Math.min(1, (e.clientX - r.left - 7) / (r.width - 14))), ch = chAt(f * d);
+      tip.textContent = fmtT(f * d) + (ch ? ' · ' + ch.title : '');
+      tip.style.left = Math.max(70, Math.min(r.width - 70, e.clientX - r.left)) + 'px'; tip.hidden = false;
+    };
+    sw.onmouseleave = () => { tip.hidden = true; }; }
   const seek = $('seek');
   seek.oninput = () => { dragging = true; $('tcur').textContent = fmtT((seek.value / 1000) * player.getDuration()); };
   seek.onchange = () => { player.seekTo((seek.value / 1000) * player.getDuration(), true); dragging = false; };
@@ -430,6 +477,7 @@ function wireControls() {
     if (!player || !player.getDuration) return;
     const d = player.getDuration() || 0, t = player.getCurrentTime() || 0;
     $('tcur') && ($('tcur').textContent = fmtT(t)); $('tdur') && ($('tdur').textContent = fmtT(d));
+    { const ch = chAt(t), cn = $('chName'); if (cn) cn.textContent = ch ? '• ' + ch.title : ''; renderTicks(); }
     if (!dragging && d) {
       seek.value = (t / d) * 1000;
       const f = (player.getVideoLoadedFraction() || 0) * 100;
@@ -440,7 +488,7 @@ function wireControls() {
 
 // ----- captions & audio (dubbed) -----
 // prefs: cc = {on, lang}   audio = {name|null}  (null => original)
-const closeMenus = () => ['speedMenu', 'ccMenu', 'dubMenu'].forEach((m) => $(m) && ($(m).hidden = true));
+const closeMenus = () => ['speedMenu', 'ccMenu', 'dubMenu', 'chMenu'].forEach((m) => $(m) && ($(m).hidden = true));
 function toggleMenu(id, html, bind) {
   const m = $(id), wasHidden = m.hidden; closeMenus();
   if (!wasHidden) return;
@@ -520,9 +568,10 @@ window.addEventListener('keydown', (e) => {
   if (e.shiftKey && k === 'P') return select(cur - 1);
   if (e.altKey && k === 'ArrowLeft') return goHome();
   if (k === 'Escape' && !document.fullscreenElement) return focusMode ? toggleFocus() : goHome();
+  if (k === '/' || (e.ctrlKey && k.toLowerCase() === 'f')) { e.preventDefault(); sideOpen = true; $('side').classList.remove('closed'); if (focusMode) toggleFocus(); const si = $('lsearch'); if (si) si.focus(); return; }
   if (!player || !player.getPlayerState) return;
   const map = { ' ': togglePlay, k: togglePlay, j: () => seekBy(-10), l: () => seekBy(10), ArrowLeft: () => seekBy(-5), ArrowRight: () => seekBy(5),
-    ArrowUp: () => setVolume(player.getVolume() + 5), ArrowDown: () => setVolume(player.getVolume() - 5), m: toggleMute, f: toggleFs, c: toggleCaptions, z: toggleFocus, n: () => quickNote(),
+    ArrowUp: () => setVolume(player.getVolume() + 5), ArrowDown: () => setVolume(player.getVolume() - 5), m: toggleMute, f: toggleFs, c: toggleCaptions, z: toggleFocus, n: () => quickNote(), '[': () => stepChapter(-1), ']': () => stepChapter(1),
     '<': () => stepSpeed(-1), ',': () => stepSpeed(-1), '>': () => stepSpeed(1), '.': () => stepSpeed(1) };
   if (map[k]) { e.preventDefault(); map[k](); bumpControls(); }
 });
@@ -728,5 +777,41 @@ api.onDlProgress((e) => {
   if (e.state !== 'downloading') renderDlBox();
   if (e.state === 'error') toast('Download failed: ' + (e.error || 'unknown error'), true);
 });
+
+// ---------- chapters ----------
+let CH = [], ticksKey = '';
+function chAt(t) { let r = null; for (const c of CH) if (c.t <= t + 0.5) r = c; return r; }
+function renderTicks() {
+  const el = $('ticks'); if (!el || !player) return;
+  const d = player.getDuration();
+  if (!d || !CH.length) { if (ticksKey) { el.innerHTML = ''; ticksKey = ''; } return; }
+  const key = C.lessons[cur].id + ':' + Math.round(d) + ':' + CH.length; if (key === ticksKey) return; ticksKey = key;
+  el.innerHTML = CH.filter((c) => c.t > 1 && c.t < d - 1).map((c) => `<i class="tick" style="left:${(c.t / d) * 100}%"></i>`).join('');
+}
+function setChapters(list) {
+  CH = Array.isArray(list) ? list : []; ticksKey = '';
+  const w = $('chWrap'); if (w) w.hidden = !CH.length;
+  renderTicks();
+}
+async function loadChapters(L) {
+  CH = []; setChapters([]);
+  if (Array.isArray(L.chapters)) return setChapters(L.chapters);
+  try {
+    const r = await api.chapters(L.id);
+    if (Array.isArray(r)) { L.chapters = r; queueSave(); if (C.lessons[cur] === L) setChapters(r); if (query) renderList(); }
+  } catch {}
+}
+function openChMenu() {
+  if (!CH.length) return;
+  const now = chAt(player.getCurrentTime());
+  toggleMenu('chMenu', CH.map((c) => `<button data-t="${c.t}" class="${now === c ? 'on' : ''}"><span class="ct">${fmtT(c.t)}</span><span>${esc(c.title)}</span></button>`).join(''),
+    (m) => m.querySelectorAll('button').forEach((b) => (b.onclick = () => { player.seekTo(+b.dataset.t, true); closeMenus(); })));
+}
+function stepChapter(dir) {
+  if (!CH.length || !player) return;
+  const t = player.getCurrentTime();
+  const target = dir > 0 ? CH.find((c) => c.t > t + 1) : [...CH].reverse().find((c) => c.t < t - 2);
+  if (target) { player.seekTo(target.t, true); toast(target.title); } else if (dir < 0) player.seekTo(0, true);
+}
 
 goHome();

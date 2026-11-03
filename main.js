@@ -129,7 +129,7 @@ const AD_PATHS = [/\/pagead\//, /\/api\/stats\/ads/, /\/ptracking/, /\/get_midro
 const AD_SKIPPER = `(() => {
   if (window.__ytcAds) return; window.__ytcAds = true;
   const st = document.createElement('style');
-  st.textContent = '.ytp-pause-overlay,.ytp-pause-overlay-container,.ytp-endscreen-content,.ytp-ce-element,.ytp-cards-teaser,.ytp-suggested-action,.ytp-videowall-still,.ytp-chrome-top,.ytp-gradient-top,.ytp-show-cards-title,.ytp-watermark,.ytp-impression-link,.iv-branding,.annotation{display:none!important}';
+  st.textContent = 'embedded-player-video-details,.ytmVideoInfoOverlay,.ytPlayerControlsContainerHost,.new-controls,.player-controls-background,.player-controls-background-container,.player-controls-content,.ytp-pause-overlay,.ytp-pause-overlay-container,.ytp-endscreen-content,.ytp-ce-element,.ytp-cards-teaser,.ytp-suggested-action,.ytp-videowall-still,.ytp-chrome-top,.ytp-gradient-top,.ytp-show-cards-title,.ytp-watermark,.ytp-impression-link,.iv-branding,.annotation{display:none!important}';
   document.head.appendChild(st);
   let mutedByUs = false;
   const tick = () => {
@@ -232,6 +232,19 @@ ipcMain.handle('dl:delete', (_e, cid, vid) => {
 });
 ipcMain.handle('dl:open', (_e, cid) => { if (!okId(cid)) return ''; fs.mkdirSync(dlDir(cid), { recursive: true }); return shell.openPath(dlDir(cid)); });
 const VID_RE = /^[\w-]{6,20}$/;
+
+// ---------- video chapters (from yt-dlp) ----------
+ipcMain.handle('chapters:get', async (_e, vid) => {
+  if (!VID_RE.test(String(vid))) return null;
+  try {
+    const bin = await ensureYtDlp(() => {});
+    const out = await run(bin, ['--skip-download', '--no-playlist', '--no-warnings', '--print', '%(chapters)j', 'https://www.youtube.com/watch?v=' + vid]);
+    const j = JSON.parse(out.trim().split('\n').filter(Boolean).pop() || 'null');
+    if (!Array.isArray(j)) return [];
+    return j.filter((c) => c && typeof c.start_time === 'number')
+      .map((c) => ({ t: Math.floor(c.start_time), end: Math.floor(c.end_time || 0), title: String(c.title || '').slice(0, 120) }));
+  } catch { return null; } // null = could not fetch, try again next time
+});
 
 // ---------- Do Not Disturb while studying (GNOME) ----------
 const DND_KEY = ['org.gnome.desktop.notifications', 'show-banners'];

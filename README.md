@@ -22,6 +22,8 @@ Built with Electron. Developed and tested on Fedora.
 - **Ad blocking** – network rules for ad hosts plus an in-player ad skipper (best effort)
 - **Back button** on the course page (also `Esc` / `Alt+←`)
 
+- **Chapters on the seek bar** – videos with chapters get tick marks on the seek bar, a hover tooltip with time + chapter title, the current chapter name next to the time, a chapters menu, and `[` / `]` to jump between chapters (chapters are read with yt-dlp the first time a lesson opens, then cached)
+- **Lesson search** – search box above the lesson list (`/` or `Ctrl+F`) matches lesson titles, your notes (general and timestamped) and chapter names, highlights matches, and jumps straight to the note/chapter moment when you click a result
 - **Dark mode** – toggle in the top bar (sun/moon button); follows your system setting the first time and is remembered
 - **Offline downloads** – download any lesson (arrow next to it) or the whole course (Overview tab). Offline lessons play in the same custom player with no internet, no ads and no YouTube page around them, keep captions (English) when available, and are used automatically
 
@@ -86,6 +88,8 @@ npm start
 | `F` | Fullscreen |
 | `C` | Toggle captions |
 | `Z` | Focus mode |
+| `[` / `]` | Previous / next chapter |
+| `/` or `Ctrl+F` | Search lessons |
 | `N` | Add a note at the current time |
 | `<` / `>` (or `,` / `.`) | Slower / faster |
 | `Shift+N` / `Shift+P` | Next / previous lesson |

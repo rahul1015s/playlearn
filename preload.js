@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('api', {
   dlDelete: (cid, vid) => ipcRenderer.invoke('dl:delete', cid, vid),
   dlOpen: (cid) => ipcRenderer.invoke('dl:open', cid),
   onDlProgress: (cb) => ipcRenderer.on('dl:progress', (_e, p) => cb(p)),
+  chapters: (vid) => ipcRenderer.invoke('chapters:get', vid),
   openExternal: (u) => ipcRenderer.invoke('open-external', u),
   onStatus: (cb) => ipcRenderer.on('import-status', (_e, m) => cb(m)),
   onIncomingUrl: (cb) => ipcRenderer.on('incoming-url', (_e, u) => cb(u)),
