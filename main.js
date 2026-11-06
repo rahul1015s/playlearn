@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -76,7 +76,7 @@ async function fetchPlaylist(pid, send) {
 
 async function importPlaylist(input, send) {
   const pid = playlistId(input);
-  if (!pid) throw new Error('That does not look like a YouTube playlist link (needs ?list=…)');
+  if (!pid) throw new Error('That does not look like a YouTube playlist link (needs ?list=…). To build a course from single videos, use “Custom course”.');
   const existing = listCourses().find((c) => c.playlistId === pid);
   if (existing) return existing;
   const pl = await fetchPlaylist(pid, send);
@@ -93,10 +93,114 @@ async function importPlaylist(input, send) {
   return course;
 }
 
+
+// ---------- custom courses: resolve single video / playlist links into lessons ----------
+function videoId(input) {
+  let s = String(input || '').trim();
+  if (/^[\w-]{11}$/.test(s)) return s;
+  if (!/^[a-z]+:\/\//i.test(s)) s = 'https://' + s;
+  try {
+    const u = new URL(s), h = u.hostname.replace(/^(www|m|music)\./, '');
+    if (h === 'youtu.be') { const id = u.pathname.slice(1).split('/')[0]; return /^[\w-]{11}$/.test(id) ? id : null; }
+    if (/(^|\.)youtube(-nocookie)?\.com$/.test(h)) {
+      const v = u.searchParams.get('v'); if (v && /^[\w-]{11}$/.test(v)) return v;
+      const m = /^\/(?:shorts|embed|live|v)\/([\w-]{11})/.exec(u.pathname); if (m) return m[1];
+    }
+  } catch {}
+  return null;
+}
+async function fetchVideo(vid, send) {
+  const bin = await ensureYtDlp(send);
+  const out = await run(bin, ['--skip-download', '--no-playlist', '--no-warnings', '--print',
+    '%(id)s\t%(title)s\t%(duration)s\t%(channel)s', 'https://www.youtube.com/watch?v=' + vid]);
+  const [id, title, dur, channel] = out.trim().split('\n').filter(Boolean).pop().split('\t');
+  if (!id) throw new Error('video not found');
+  return { id, title: title || 'Untitled video', duration: Math.round(+dur) || 0, channel: channel && channel !== 'NA' ? channel : '' };
+}
+const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36';
+function webUrl(input) {
+  let s = String(input || '').trim();
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) s = 'https://' + s;
+  try { const u = new URL(s); return /^https?:$/.test(u.protocol) && u.hostname.includes('.') ? u : null; } catch { return null; }
+}
+const isYouTubeHost = (u) => /(^|\.)(youtube(-nocookie)?\.com|youtu\.be)$/.test(u.hostname);
+// Plain fetch first; if the site blocks it (Cloudflare etc.) or the page is an empty JS shell, render it in a hidden browser window.
+const looksEmpty = (html) => html.replace(/<(script|style)[\s\S]*?<\/\1>/gi, '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().length < 1500 || /<title>\s*Just a moment/i.test(html);
+async function renderPage(url, send) {
+  const { BrowserWindow, session } = require('electron');
+  send('Opening the page in a hidden browser…');
+  const w = new BrowserWindow({ show: false, width: 1280, height: 900, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, session: session.fromPartition('article-render'), backgroundThrottling: false } });
+  w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  w.webContents.session.setPermissionRequestHandler((_wc, _p, cb) => cb(false));
+  try {
+    w.loadURL(url, { userAgent: UA }).catch(() => {});
+    const t0 = Date.now(); let html = '';
+    while (Date.now() - t0 < 30000) {
+      await new Promise((r) => setTimeout(r, 1200));
+      if (w.isDestroyed()) break;
+      try {
+        html = await w.webContents.executeJavaScript('document.documentElement.outerHTML');
+        if (!looksEmpty(html) && !w.webContents.isLoading()) { await new Promise((r) => setTimeout(r, 800)); html = await w.webContents.executeJavaScript('document.documentElement.outerHTML'); break; }
+      } catch {}
+    }
+    const finalUrl = w.isDestroyed() ? url : w.webContents.getURL() || url;
+    if (!html || /<title>\s*Just a moment/i.test(html)) throw new Error('the site blocked automatic access (bot check)');
+    return { type: 'article', url: finalUrl, html };
+  } finally { if (!w.isDestroyed()) w.destroy(); }
+}
+async function fetchArticle(u, send = () => {}) {
+  try {
+    const res = await fetch(u.href, { redirect: 'follow', signal: AbortSignal.timeout(25000),
+      headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en' } });
+    const type = res.headers.get('content-type') || '';
+    if (res.ok && type && !/html|xml/i.test(type)) throw Object.assign(new Error('not a web page (' + type.split(';')[0] + ')'), { final: true });
+    if (res.ok) {
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length > 6 * 1024 * 1024) throw Object.assign(new Error('page is too large'), { final: true });
+      const html = buf.toString('utf8');
+      if (!looksEmpty(html)) return { type: 'article', url: res.url || u.href, html };
+    }
+  } catch (e) { if (e.final) throw e; }
+  return renderPage(u.href, send);
+}
+// text = any mix of video links / playlist links separated by whitespace or commas
+async function resolveVideos(text, send) {
+  const items = [...new Set(String(text || '').split(/[\s,]+/).filter(Boolean))];
+  if (!items.length) throw new Error('Paste at least one YouTube link');
+  if (items.length > 100) throw new Error('Add at most 100 links at a time');
+  let done = 0;
+  const results = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(4, items.length) }, async () => {
+    while (next < items.length) {
+      const k = next++, it = items[k];
+      try {
+        const vid = videoId(it), pid = vid ? null : playlistId(it);
+        if (vid) results[k] = { lessons: [await fetchVideo(vid, send)] };
+        else if (pid) results[k] = { lessons: (await fetchPlaylist(pid, send)).lessons };
+        else {
+          const wu = webUrl(it);
+          if (!wu) results[k] = { error: 'Not a link I can open' };
+          else if (isYouTubeHost(wu)) results[k] = { error: 'Not a YouTube video or playlist link (channel pages are not supported)' };
+          else results[k] = { lessons: [await fetchArticle(wu, send)] };
+        }
+      } catch (e) { results[k] = { error: e.message }; }
+      send(`Reading links… ${++done}/${items.length}`);
+    }
+  }));
+  const seen = new Set(), lessons = [], errors = [];
+  results.forEach((r, k) => {
+    if (r.error) { errors.push(`${items[k].slice(0, 60)} – ${r.error}`); return; }
+    for (const l of r.lessons) { const key = l.id || l.url; if (!seen.has(key)) { seen.add(key); lessons.push(l); } }
+  });
+  return { lessons, errors };
+}
+
 // Re-read the playlist and merge: keep all progress/notes/chapters, add new videos, follow the playlist order.
 // Videos that left the playlist are dropped unless you have progress, notes or a download for them.
 async function refreshCourse(id, send) {
   const old = readCourse(id);
+  if (old.custom) throw new Error('Custom courses have no playlist to refresh');
   const pl = await fetchPlaylist(old.playlistId, send); // throws (and changes nothing) if the playlist can't be read
   const byId = new Map(old.lessons.map((l) => [l.id, l]));
   const seen = new Set(), now = Date.now();
@@ -119,6 +223,64 @@ async function refreshCourse(id, send) {
   writeCourse(course);
   return { course, added, removed, kept };
 }
+
+// ---------- backup: export / import everything (courses, progress, notes, highlights, articles, settings) ----------
+const BACKUP_FORMAT = 'playlearn-backup';
+const PREF_KEYS = ['theme', 'vol', 'rate', 'cc', 'audio', 'timerPreset'];
+const validCourse = (c) => c && typeof c === 'object' && typeof c.id === 'string' && /^[\w-]+$/.test(c.id) && Array.isArray(c.lessons) &&
+  c.lessons.length > 0 && c.lessons.every((l) => l && typeof l === 'object' && typeof l.id === 'string');
+function mergeLesson(n, o) {
+  if (!o) return n;
+  const seen = new Set(), marks = [];
+  for (const m of [...(n.marks || []), ...(o.marks || [])]) { const k = m.t + '|' + m.text; if (!seen.has(k)) { seen.add(k); marks.push(m); } }
+  marks.sort((x, y) => x.t - y.t);
+  const r = { ...n, done: !!(n.done || o.done), notes: n.notes && n.notes.trim() ? n.notes : (o.notes || '') };
+  if (marks.length) r.marks = marks;
+  if (!n.chapters && o.chapters) r.chapters = o.chapters;
+  return r;
+}
+// Same course on both sides: the most recently opened copy decides order/position; progress and notes from both are kept.
+function mergeCourse(a, b) {
+  const [newer, other] = (b.lastOpened || 0) > (a.lastOpened || 0) ? [b, a] : [a, b];
+  const om = new Map(other.lessons.map((l) => [l.id, l])), nIds = new Set(newer.lessons.map((l) => l.id));
+  const lessons = [...newer.lessons.map((l) => mergeLesson(l, om.get(l.id))), ...other.lessons.filter((l) => !nIds.has(l.id))];
+  const c = { ...newer, lessons, createdAt: Math.min(a.createdAt || Infinity, b.createdAt || Infinity), lastOpened: Math.max(a.lastOpened || 0, b.lastOpened || 0) };
+  if (!isFinite(c.createdAt)) c.createdAt = Date.now();
+  if (!lessons.some((l) => l.id === c.lastLesson)) c.lastLesson = lessons[0].id;
+  return c;
+}
+ipcMain.handle('data:export', async (_e, prefs) => {
+  try {
+    const courses = listCourses();
+    const stamp = new Date().toISOString().slice(0, 10);
+    const r = await dialog.showSaveDialog(win, { title: 'Export Playlearn data', defaultPath: path.join(app.getPath('documents'), `playlearn-backup-${stamp}.json`), filters: [{ name: 'Playlearn backup', extensions: ['json'] }] });
+    if (r.canceled || !r.filePath) return { ok: false, canceled: true };
+    const clean = {}; for (const k of PREF_KEYS) if (prefs && prefs[k] !== undefined) clean[k] = prefs[k];
+    fs.writeFileSync(r.filePath, JSON.stringify({ format: BACKUP_FORMAT, version: 1, exportedAt: Date.now(), prefs: clean, courses }));
+    return { ok: true, path: r.filePath, count: courses.length, size: fs.statSync(r.filePath).size };
+  } catch (err) { return { ok: false, error: err.message }; }
+});
+ipcMain.handle('data:import', async () => {
+  try {
+    const r = await dialog.showOpenDialog(win, { title: 'Import Playlearn data', properties: ['openFile'], filters: [{ name: 'Playlearn backup', extensions: ['json'] }] });
+    if (r.canceled || !r.filePaths[0]) return { ok: false, canceled: true };
+    if (fs.statSync(r.filePaths[0]).size > 300 * 1024 * 1024) throw new Error('That file is too large to be a Playlearn backup');
+    let j; try { j = JSON.parse(fs.readFileSync(r.filePaths[0], 'utf8')); } catch { throw new Error('That file is not valid JSON'); }
+    if (!j || j.format !== BACKUP_FORMAT || !Array.isArray(j.courses)) throw new Error('That is not a Playlearn backup file');
+    if (j.version > 1) throw new Error('This backup was made by a newer version of Playlearn – update the app first');
+    const have = new Map(listCourses().map((c) => [c.id, c]));
+    let added = 0, merged = 0, skipped = 0;
+    for (const c of j.courses) {
+      if (!validCourse(c)) { skipped++; continue; }
+      const old = have.get(c.id);
+      writeCourse(old ? mergeCourse(old, c) : c);
+      old ? merged++ : added++;
+    }
+    const prefs = {}; for (const k of PREF_KEYS) if (j.prefs && j.prefs[k] !== undefined) prefs[k] = j.prefs[k];
+    return { ok: true, added, merged, skipped, prefs };
+  } catch (err) { return { ok: false, error: err.message }; }
+});
+ipcMain.handle('data:folder', () => shell.openPath(dataDir()));
 
 // ---------- local server (YouTube embeds refuse file:// origins) ----------
 const MIME = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.mkv': 'video/x-matroska', '.vtt': 'text/vtt', '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png' };
@@ -397,6 +559,10 @@ else {
     });
     ipcMain.handle('courses:import', async (e, url) => {
       try { return { ok: true, course: await importPlaylist(url, (m) => e.sender.send('import-status', m)) }; }
+      catch (err) { return { ok: false, error: err.message }; }
+    });
+    ipcMain.handle('videos:resolve', async (e, text) => {
+      try { return { ok: true, ...(await resolveVideos(text, (m) => e.sender.send('import-status', m))) }; }
       catch (err) { return { ok: false, error: err.message }; }
     });
     ipcMain.handle('dnd:set', (_e, on) => setDnd(!!on));

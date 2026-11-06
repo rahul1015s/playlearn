@@ -11,6 +11,7 @@ const fmtDur = (s) => {
 };
 const pct = (c) => (c.lessons.length ? Math.round((c.lessons.filter((l) => l.done).length / c.lessons.length) * 100) : 0);
 const thumb = (id) => `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+const lessonThumb = (l) => (l.type === 'article' ? l.image || '' : thumb(l.id));
 
 const I = {
   play: '<svg width="22" height="22" viewBox="0 0 24 24" fill="#1c1d1f"><path d="M8 5v14l11-7z"/></svg>',
@@ -29,6 +30,7 @@ const I = {
   muted: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z" fill="#fff"/><path d="M17 9l5 6M22 9l-5 6"/></svg>',
   full: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
   refresh: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 00-14.5-4M4 4v4h4M4 13a8 8 0 0014.5 4M20 20v-4h-4"/></svg>',
+  gear: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 01-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 010-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 014 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 010 4h-.1a1.7 1.7 0 00-1.5 1z"/></svg>',
   sun: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
   moon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 13A9 9 0 1111 3a7 7 0 0010 10z"/></svg>',
   dl: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></svg>',
@@ -62,7 +64,7 @@ async function doImport(url) {
   if (r.ok) { openCourse(r.course.id); toast('Course ready: ' + r.course.title); }
   else { toast(r.error, true); if (st) st.textContent = r.error; if (btn) btn.disabled = false; }
 }
-api.onStatus((m) => { const st = document.getElementById('status'); if (st) st.textContent = m; });
+api.onStatus((m) => { for (const id of ['status', 'mStatus']) { const st = document.getElementById(id); if (st) st.textContent = m; } });
 api.onIncomingUrl((u) => { goHome().then(() => doImport(u)); });
 
 // ---------- home ----------
@@ -73,7 +75,7 @@ async function goHome() {
   $app.innerHTML = `
   <div class="home">
     <div class="hero">
-      <div class="herotop"><div class="logo"><img src="icon.svg" width="30" height="30" alt="" style="border-radius:8px">Playlearn</div><button class="tb-btn themeBtn" title="Dark / light mode">${themeIcon()}</button></div>
+      <div class="herotop"><div class="logo"><img src="icon.svg" width="30" height="30" alt="" style="border-radius:8px">Playlearn</div><span class="herobtns"><button class="tb-btn" id="settingsBtn" title="Settings – export / import your data">${I.gear}</button><button class="tb-btn themeBtn" title="Dark / light mode">${themeIcon()}</button></span></div>
       <h1>Turn any YouTube playlist into a course.</h1>
       <p>Paste a playlist link. Get a Udemy-style classroom with sections, progress tracking and notes – saved on this computer.</p>
       <form class="add" id="addForm">
@@ -81,6 +83,7 @@ async function goHome() {
         <button class="btn" id="addBtn" type="submit">Create course</button>
       </form>
       <div class="status" id="status"></div>
+      <button class="btn ghost light" id="newCustom" type="button">+ Custom course (videos &amp; articles)</button>
     </div>
     <div class="wrap">
       ${last ? `<h2>Continue learning</h2>
@@ -91,11 +94,13 @@ async function goHome() {
           <div class="bar"><i style="width:${pct(last)}%"></i></div></div>
         <button class="btn">Resume</button>
       </div>` : ''}
-      <div class="h2row"><h2>My courses</h2>${courses.length ? `<button class="btn ghost" id="refreshAll">${I.refresh} Refresh all</button>` : ''}</div>
+      <div class="h2row"><h2>My courses</h2>${courses.some((c) => !c.custom) ? `<button class="btn ghost" id="refreshAll">${I.refresh} Refresh all</button>` : ''}</div>
       ${courses.length ? `<div class="grid">${courses.map(card).join('')}</div>` : `
       <div class="empty">${I.book}<h3>No courses yet</h3><p>Paste a playlist link above, or drag a link onto this window.</p></div>`}
     </div>
   </div>`;
+  document.getElementById('newCustom').onclick = customModal;
+  document.getElementById('settingsBtn').onclick = settingsModal;
   document.getElementById('addForm').onsubmit = (e) => { e.preventDefault(); doImport(document.getElementById('url').value); };
   $app.querySelectorAll('[data-open]').forEach((el) => (el.onclick = () => openCourse(el.dataset.open)));
   $app.querySelectorAll('[data-refresh]').forEach((el) => (el.onclick = async (e) => {
@@ -105,7 +110,8 @@ async function goHome() {
   }));
   { const ra = document.getElementById('refreshAll'); if (ra) ra.onclick = async () => {
     ra.disabled = true; let added = 0, failed = 0;
-    for (let k = 0; k < courses.length; k++) { ra.textContent = `Refreshing ${k + 1}/${courses.length}…`; const r = await api.refreshCourse(courses[k].id); if (r.ok) added += r.added; else failed++; }
+    const pls = courses.filter((c) => !c.custom);
+    for (let k = 0; k < pls.length; k++) { ra.textContent = `Refreshing ${k + 1}/${pls.length}…`; const r = await api.refreshCourse(pls[k].id); if (r.ok) added += r.added; else failed++; }
     toast(`${added ? added + ' new lesson' + (added === 1 ? '' : 's') + ' found' : 'Everything is up to date'}${failed ? ` · ${failed} course(s) could not be checked` : ''}`, !!failed && !added); goHome();
   }; }
   $app.querySelectorAll('[data-del]').forEach((el) => (el.onclick = async (e) => {
@@ -119,8 +125,8 @@ function card(c) {
   return `<div class="card" data-open="${esc(c.id)}">
     <div class="thumb" style="background-image:url(${esc(c.thumbnail)})"><div class="play"><b>${I.play}</b></div></div>
     <button class="del" data-del="${esc(c.id)}" title="Delete course">${I.trash}</button>
-    <button class="del refr" data-refresh="${esc(c.id)}" title="Check the playlist for new videos">${I.refresh}</button>
-    <div class="card-body"><h3>${esc(c.title)}</h3><small>${esc(c.channel)}</small>
+    ${c.custom ? '' : `<button class="del refr" data-refresh="${esc(c.id)}" title="Check the playlist for new videos">${I.refresh}</button>`}
+    <div class="card-body"><h3>${esc(c.title)}</h3><small>${c.custom ? 'Custom course' : esc(c.channel)}</small>
       <div class="meta"><span>${c.lessons.length} lessons · ${fmtDur(total)}</span><span>${p}%</span></div>
       <div class="bar"><i style="width:${p}%"></i></div></div></div>`;
 }
@@ -130,7 +136,9 @@ window.addEventListener('dragleave', (e) => { if (!e.relatedTarget) document.bod
 window.addEventListener('drop', (e) => {
   e.preventDefault(); document.body.classList.remove('drop-over');
   const t = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
-  if (t) goHome().then(() => doImport(t.trim()));
+  if (!t) return;
+  if (C && C.custom && document.querySelector('.course') && !document.getElementById('modal')) { addLinks(t); return; }
+  goHome().then(() => doImport(t.trim()));
 });
 
 // ---------- course ----------
@@ -157,7 +165,7 @@ async function openCourse(id) {
   tab = 'overview';
   renderCourse();
   queueSave();
-  if (!C.refreshedAt || Date.now() - C.refreshedAt > 864e5) refreshNow(true);
+  if (!C.custom && (!C.refreshedAt || Date.now() - C.refreshedAt > 864e5)) refreshNow(true);
 }
 
 function ringSvg(p) {
@@ -168,7 +176,7 @@ function ringSvg(p) {
 }
 
 function renderCourse() {
-  const L = C.lessons[cur];
+  const L = C.lessons[cur], isArt = L.type === 'article';
   $app.innerHTML = `
   <div class="course ${focusMode ? 'focus' : ''}">
     <div class="topbar">
@@ -182,8 +190,8 @@ function renderCourse() {
       <button class="tb-btn" id="toggleSide" title="Course content">${I.panel}</button>
     </div>
     <div class="main">
-      <div class="left">
-        <div class="player idle0" id="playerBox">
+      <div class="left ${isArt ? 'article' : ''}">
+        ${isArt ? '<div class="lesson-bar-slot"></div>' : `<div class="player idle0" id="playerBox">
           <div id="yt"></div>
           <div class="shield" id="shield"></div>
           <div class="bigplay" id="bigplay"></div>
@@ -209,21 +217,21 @@ function renderCourse() {
               <button class="cb2" id="fs" title="Fullscreen (F)">${I.full}</button>
             </div>
           </div>
-        </div>
+        </div>`}
         <div class="lesson-bar">
           <span class="t">${cur + 1}. ${esc(L.title)}</span>${offBadge(L.id)}
-          <label class="switch"><input type="checkbox" id="auto" ${autoNext ? 'checked' : ''}> Autoplay next</label>
+          ${isArt ? '' : `<label class="switch"><input type="checkbox" id="auto" ${autoNext ? 'checked' : ''}> Autoplay next</label>`}
           <button id="prev" ${cur === 0 ? 'disabled' : ''}>‹ Prev</button>
           <button id="next" ${cur === C.lessons.length - 1 ? 'disabled' : ''}>Next ›</button>
         </div>
-        <div class="tabs">
+        ${isArt ? '<div class="reader" id="reader"></div>' : `<div class="tabs">
           <button class="tab ${tab === 'overview' ? 'on' : ''}" data-tab="overview">Overview</button>
           <button class="tab ${tab === 'notes' ? 'on' : ''}" data-tab="notes">Notes</button>
         </div>
-        <div class="pane" id="pane"></div>
+        <div class="pane" id="pane"></div>`}
       </div>
       <aside class="side ${sideOpen ? '' : 'closed'}" id="side">
-        <div class="side-h"><b>Course content</b><button class="x" id="closeSide" title="Close">${I.x}</button></div>
+        <div class="side-h"><b>Course content</b>${C.custom ? `<button class="addv" id="addVideos" title="Add videos, playlists or articles to this course">+ Add</button>` : ''}<button class="x" id="closeSide" title="Close">${I.x}</button></div>
         <div class="searchbar"><input id="lsearch" type="search" placeholder="Search lessons, notes, chapters   ( / )" autocomplete="off" value="${esc(query)}"></div>
         <div class="list" id="list"></div>
       </aside>
@@ -232,24 +240,27 @@ function renderCourse() {
   document.getElementById('goHome').onclick = goHome;
   document.getElementById('back').onclick = goHome;
   document.getElementById('toggleSide').onclick = () => { sideOpen = !sideOpen; document.getElementById('side').classList.toggle('closed', !sideOpen); };
+  { const av = document.getElementById('addVideos'); if (av) av.onclick = addModal; }
   document.getElementById('closeSide').onclick = () => { sideOpen = false; document.getElementById('side').classList.add('closed'); };
-  document.getElementById('auto').onchange = (e) => (autoNext = e.target.checked);
+  { const au = document.getElementById('auto'); if (au) au.onchange = (e) => (autoNext = e.target.checked); }
   document.getElementById('prev').onclick = () => select(cur - 1);
   document.getElementById('next').onclick = () => select(cur + 1);
   $app.querySelectorAll('.tab').forEach((b) => (b.onclick = () => { saveNotes(); tab = b.dataset.tab; $app.querySelectorAll('.tab').forEach((x) => x.classList.toggle('on', x === b)); renderPane(); }));
   { const si = document.getElementById('lsearch'); si.oninput = () => { query = si.value; renderList(); }; si.onkeydown = (e) => { if (e.key === 'Escape') { e.stopPropagation(); si.value = ''; query = ''; renderList(); si.blur(); } }; }
-  renderList(); renderPane(); wireTimer(); mountPlayer();
+  renderList(); renderPane(); wireTimer();
+  if (isArt) renderReader(L); else mountPlayer();
 }
 
 function renderPane() {
   const pane = document.getElementById('pane'), L = C.lessons[cur];
+  if (!pane) return; // article lessons use the reader instead
   if (tab === 'notes') {
     renderNotesPane(pane, L);
   } else {
     const total = C.lessons.reduce((a, l) => a + l.duration, 0);
     const left = C.lessons.filter((l) => !l.done).reduce((a, l) => a + l.duration, 0);
-    pane.innerHTML = `<h2>${esc(C.title)}</h2>
-      <p>${esc(C.channel ? 'By ' + C.channel : '')}</p>
+    pane.innerHTML = `${C.custom ? `<input class="cname" id="cname" value="${esc(C.title)}" maxlength="120" title="Rename course" spellcheck="false">` : `<h2>${esc(C.title)}</h2>`}
+      <p>${C.custom ? 'Custom course – built from videos you picked' : esc(C.channel ? 'By ' + C.channel : '')}</p>
       <div class="stats">
         <div><b>${C.lessons.length}</b><span>Lessons</span></div>
         <div><b>${fmtDur(total)}</b><span>Total length</span></div>
@@ -257,10 +268,19 @@ function renderPane() {
         <div><b>${pct(C)}%</b><span>Complete</span></div>
       </div>
       <div id="dlbox"></div>
+      ${C.custom ? `<div class="nrow" style="margin-top:22px"><button class="btn" id="addBtn2">+ Add videos or articles</button></div>
+      <div class="hint">Paste video links from any channel, a whole playlist, or an article / blog post link and it joins the end of this course (articles open as a clean note page you can highlight, comment on and edit). Hover a lesson in the list to reorder or remove it. You can also drop a link onto this window.</div>` : `
       <div class="nrow" style="margin-top:22px"><button class="btn ghost" id="refreshBtn">${I.refresh} Refresh playlist</button><button class="btn ghost" id="syncBtn">Source playlist ↗</button></div>
-      <div class="hint">${C.refreshedAt ? 'Last checked ' + ago(C.refreshedAt) + '.' : 'Not checked yet.'} New videos are picked up automatically when you open the course (at most once a day).</div>`;
-    document.getElementById('syncBtn').onclick = () => api.openExternal(C.url);
-    document.getElementById('refreshBtn').onclick = () => refreshNow(false);
+      <div class="hint">${C.refreshedAt ? 'Last checked ' + ago(C.refreshedAt) + '.' : 'Not checked yet.'} New videos are picked up automatically when you open the course (at most once a day).</div>`}`;
+    if (C.custom) {
+      document.getElementById('addBtn2').onclick = addModal;
+      const cn = document.getElementById('cname');
+      cn.onchange = () => { C.title = cn.value.trim() || C.title; cn.value = C.title; const t = document.querySelector('.ctitle'); if (t) t.textContent = C.title; queueSave(); };
+      cn.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Enter') cn.blur(); };
+    } else {
+      document.getElementById('syncBtn').onclick = () => api.openExternal(C.url);
+      document.getElementById('refreshBtn').onclick = () => refreshNow(false);
+    }
     renderDlBox();
   }
 }
@@ -279,15 +299,16 @@ function matchLesson(l, ws) {
   if (hit(l.notes)) { const n = l.notes, k = Math.max(0, n.toLowerCase().indexOf(ws[0]) - 30); return { kind: 'note', text: (k ? '…' : '') + n.slice(k, k + 90) }; }
   for (const m of l.marks || []) if (hit(m.text)) return { kind: 'mark', t: m.t, text: m.text };
   for (const c of l.chapters || []) if (hit(c.title)) return { kind: 'chapter', t: c.t, text: c.title };
+  if (l.blocks) for (let k = 0; k < l.blocks.length; k++) { const b = l.blocks[k]; if (!b.x && (hit(b.t) || hit(b.c))) { const tx = hit(b.t) ? b.t : b.c, at = Math.max(0, tx.toLowerCase().indexOf(ws[0]) - 30); return { kind: 'text', b: k, text: (at ? '…' : '') + tx.slice(at, at + 90) }; } }
   return null;
 }
 function itemHtml(l, i, m, ws) {
-  const label = m && m.kind !== 'title' ? ({ note: 'Notes', mark: 'Note', chapter: 'Chapter' }[m.kind]) : '';
-  return `<div class="item ${i === cur ? 'on' : ''}" data-i="${i}" ${m && m.t != null ? `data-t="${m.t}"` : ''}>
+  const label = m && m.kind !== 'title' ? ({ note: 'Notes', mark: 'Note', chapter: 'Chapter', text: 'Article' }[m.kind]) : '';
+  return `<div class="item ${i === cur ? 'on' : ''}" data-i="${i}" ${m && m.t != null ? `data-t="${m.t}"` : ''} ${m && m.b != null ? `data-b="${m.b}"` : ''}>
     <div class="cb ${l.done ? 'done' : ''}" data-cb="${i}">${l.done ? I.check : ''}</div>
     <div><div class="t">${i + 1}. ${hl(l.title, ws)}${l.gone ? ' <span class="gonebadge" title="This video is no longer in the playlist">removed</span>' : isNew(l) ? ' <span class="newbadge">New</span>' : ''}</div>
     ${label ? `<div class="snip">${label}${m.t != null ? ' · ' + fmtT(m.t) : ''}: ${hl(m.text, ws)}</div>` : ''}
-    <div class="d">${I.playSm}${fmtDur(l.duration)}<button class="dlb ${dlCls(l.id)}" data-dl="${l.id}" title="Download for offline">${dlIcon(l.id)}</button></div></div></div>`;
+    <div class="d">${l.type === 'article' ? I_DOC : I.playSm}${fmtDur(l.duration)}${l.type === 'article' ? ' read' : ''}${C.custom && l.channel ? `<span class="chn" title="${esc(l.channel)}">· ${esc(l.channel)}</span>` : ''}${l.type === 'article' ? '' : `<button class="dlb ${dlCls(l.id)}" data-dl="${l.id}" title="Download for offline">${dlIcon(l.id)}</button>`}${C.custom ? `<span class="ctl"><button data-mv="${i}" data-d="-1" title="Move up">↑</button><button data-mv="${i}" data-d="1" title="Move down">↓</button><button data-rm="${i}" title="Remove from course">✕</button></span>` : ''}</div></div></div>`;
 }
 function renderList() {
   const list = document.getElementById('list');
@@ -315,11 +336,18 @@ function renderList() {
   }));
   list.querySelectorAll('.item').forEach((el) => (el.onclick = () => {
     const i = +el.dataset.i, t = el.dataset.t === undefined ? null : +el.dataset.t;
+    if (el.dataset.b !== undefined) {
+      pendingBlock = { id: C.lessons[i].id, b: +el.dataset.b };
+      if (i === cur) { renderReader(C.lessons[cur]); return; }
+      select(i); return;
+    }
     if (t !== null && i === cur && player) { player.seekTo(t, true); return; }
     if (t !== null) pendingSeek = { id: C.lessons[i].id, t };
     select(i);
   }));
   list.querySelectorAll('[data-dl]').forEach((el) => (el.onclick = (e) => { e.stopPropagation(); onDlClick(el.dataset.dl, el); }));
+  list.querySelectorAll('[data-mv]').forEach((el) => (el.onclick = (e) => { e.stopPropagation(); moveLesson(+el.dataset.mv, +el.dataset.d); }));
+  list.querySelectorAll('[data-rm]').forEach((el) => (el.onclick = (e) => { e.stopPropagation(); removeLesson(+el.dataset.rm, el); }));
   list.querySelectorAll('[data-cb]').forEach((el) => (el.onclick = (e) => { e.stopPropagation(); setDone(+el.dataset.cb, !C.lessons[+el.dataset.cb].done); }));
 }
 
@@ -651,9 +679,11 @@ function renderNotesPane(pane, L) {
 function exportNotes() {
   let md = `# ${C.title}\n\n`, any = false;
   C.lessons.forEach((l, i) => {
-    const n = (l.notes || '').trim(); if (!n && !(l.marks && l.marks.length)) return;
+    const n = (l.notes || '').trim(); const cms = (l.blocks || []).filter((b) => b.hl || b.c); if (!n && !(l.marks && l.marks.length) && !cms.length) return;
     any = true; md += `## ${i + 1}. ${l.title}\n\n`;
+    if (l.type === 'article') md += `Source: ${l.url}\n\n`;
     (l.marks || []).forEach((m) => (md += `- [${fmtT(m.t)}](https://youtu.be/${l.id}?t=${m.t}) ${m.text}\n`));
+    cms.forEach((b) => (md += `- ${b.hl ? '⭐ ' : ''}${b.t.slice(0, 200)}${b.c ? ' — 💬 ' + b.c : ''}\n`));
     if (n) md += `\n${n}\n`;
     md += '\n';
   });
@@ -768,7 +798,8 @@ async function onDlClick(vid, btn) {
 }
 function renderDlBox() {
   const b = $('dlbox'); if (!b) return;
-  const n = C.lessons.length, done = dlCount(), busy = dlBusy();
+  const vids = C.lessons.filter((l) => l.type !== 'article'), n = vids.length, done = dlCount(), busy = dlBusy();
+  if (!n) { b.innerHTML = ''; return; }
   const bytes = Object.values(DL).reduce((s, d) => s + (d.state === 'done' ? d.size || 0 : 0), 0);
   b.innerHTML = `<h3 class="nh">Offline downloads</h3>
     <p class="hint" style="margin:0 0 12px">${done} of ${n} lessons saved on this computer${bytes ? ' · ' + fmtBytes(bytes) : ''}${busy ? ' · ' + busy + ' in progress' : ''}. Offline lessons play without internet, ads, or YouTube around them.</p>
@@ -776,7 +807,7 @@ function renderDlBox() {
       ${busy ? '<button class="btn ghost" id="dlCancel">Cancel downloads</button>' : ''}
       ${done ? '<button class="btn ghost" id="dlOpen">Open folder</button><button class="btn ghost" id="dlRemove">Remove all downloads</button>' : ''}</div>
     ${FF ? '' : '<p class="hint">Without ffmpeg, downloads are 360p. For up to 720p: <code>sudo dnf install ffmpeg-free</code></p>'}`;
-  $('dlAll').onclick = () => api.dlStart(C.id, C.lessons.filter((l) => !DL[l.id] || DL[l.id].state === 'error').map((l) => l.id));
+  $('dlAll').onclick = () => api.dlStart(C.id, C.lessons.filter((l) => l.type !== 'article' && (!DL[l.id] || DL[l.id].state === 'error')).map((l) => l.id));
   const cb = $('dlCancel'); if (cb) cb.onclick = () => api.dlCancel(C.id);
   const ob = $('dlOpen'); if (ob) ob.onclick = () => api.dlOpen(C.id);
   const rb = $('dlRemove'); if (rb) rb.onclick = async () => {
@@ -845,7 +876,7 @@ function refreshMsg(r) {
 }
 let refreshing = false;
 async function refreshNow(silent) {
-  if (refreshing || !C) return;
+  if (refreshing || !C || C.custom) return;
   refreshing = true;
   const id = C.id, btn = $('refreshBtn'); if (btn && !silent) { btn.disabled = true; btn.lastChild.textContent = ' Checking…'; }
   flushSave();
@@ -861,6 +892,163 @@ async function refreshNow(silent) {
   if (progress && k >= 0) Object.assign(C.lessons[k], { done: progress.done || C.lessons[k].done, pos: Math.max(progress.pos || 0, C.lessons[k].pos || 0) });
   queueSave(); refreshProgress();
   if (!silent || r.added) toast(refreshMsg(r));
+}
+
+// ---------- custom courses (hand-picked videos) ----------
+function syncBar() {
+  const L = C.lessons[cur], t = document.querySelector('.lesson-bar .t');
+  if (t && t.firstChild) t.firstChild.nodeValue = `${cur + 1}. ${L.title}`;
+  const pv = $('prev'), nx = $('next');
+  if (pv) pv.disabled = cur === 0; if (nx) nx.disabled = cur === C.lessons.length - 1;
+}
+function moveLesson(i, d) {
+  const j = i + d; if (j < 0 || j >= C.lessons.length) return;
+  persistPos();
+  const curId = C.lessons[cur].id;
+  [C.lessons[i], C.lessons[j]] = [C.lessons[j], C.lessons[i]];
+  cur = C.lessons.findIndex((l) => l.id === curId);
+  C.thumbnail = lessonThumb(C.lessons[0]);
+  openSecs.add(Math.floor(j / SECTION_SIZE));
+  queueSave(); renderList(); syncBar();
+}
+async function removeLesson(i, el) {
+  if (C.lessons.length < 2) { toast('A course needs at least one video – delete the course from Home instead.', true); return; }
+  if (el.dataset.confirm !== '1') {
+    el.dataset.confirm = '1'; el.textContent = 'Remove?'; el.classList.add('sure');
+    setTimeout(() => { if (el.isConnected) { el.dataset.confirm = ''; el.textContent = '✕'; el.classList.remove('sure'); } }, 2500);
+    return;
+  }
+  const [gone] = C.lessons.splice(i, 1);
+  api.dlDelete(C.id, gone.id);
+  C.thumbnail = lessonThumb(C.lessons[0]);
+  if (i === cur) {
+    cur = Math.min(i, C.lessons.length - 1); C.lastLesson = C.lessons[cur].id;
+    queueSave(); await loadDl(); renderCourse();
+  } else {
+    if (i < cur) cur--;
+    queueSave(); await loadDl(); renderList(); syncBar(); if (tab === 'overview') renderPane();
+  }
+  toast('Removed “' + gone.title + '”');
+}
+async function addLinks(text) {
+  toast('Reading links…');
+  const r = await api.resolveVideos(text);
+  if (!r.ok) { toast(r.error, true); return false; }
+  return mergeResolved(prepareResolved(r));
+}
+function mergeResolved(r) {
+  const have = new Set(C.lessons.map((l) => l.id)), now = Date.now();
+  const fresh = r.lessons.filter((l) => !have.has(l.id));
+  fresh.forEach((l) => C.lessons.push({ ...l, done: false, pos: 0, notes: '', addedAt: now }));
+  const bits = [];
+  if (fresh.length) bits.push(`${fresh.length} item${fresh.length === 1 ? '' : 's'} added`);
+  const dup = r.lessons.length - fresh.length; if (dup) bits.push(`${dup} already in this course`);
+  if (r.errors.length) bits.push(`${r.errors.length} link${r.errors.length === 1 ? '' : 's'} could not be read`);
+  if (fresh.length) {
+    openSecs.add(Math.floor((C.lessons.length - 1) / SECTION_SIZE));
+    queueSave(); loadDl().then(() => { renderList(); syncBar(); if (tab === 'overview') renderPane(); });
+  }
+  toast(bits.join(' · ') || 'Nothing to add', !fresh.length);
+  return fresh.length > 0;
+}
+
+// Generic "paste links" dialog. run(name, text) -> {ok, error?}; closes on ok.
+function linksModal({ heading, askName, okLabel, run, text = '' }) {
+  if (document.getElementById('modal')) return;
+  const bg = document.createElement('div'); bg.className = 'modal-bg'; bg.id = 'modal';
+  bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true">
+    <h3>${esc(heading)}</h3>
+    ${askName ? `<label>Course name<input id="mName" maxlength="120" placeholder="e.g. Learn React from scratch" autocomplete="off" spellcheck="false"></label>` : ''}
+    <label>Links <small>one per line – YouTube videos from any channel, a playlist (adds all its videos), or any article / blog post (becomes a readable note page)</small>
+      <textarea id="mLinks" rows="8" placeholder="https://www.youtube.com/watch?v=…&#10;https://some-blog.com/great-article" spellcheck="false">${esc(text)}</textarea></label>
+    <div class="mstatus" id="mStatus"></div>
+    <div class="mrow"><button class="btn ghost" id="mCancel" type="button">Cancel</button><button class="btn" id="mOk" type="button">${esc(okLabel)}</button></div></div>`;
+  document.body.appendChild(bg);
+  const $m = (id) => document.getElementById(id);
+  let busy = false;
+  const close = () => { if (!busy) bg.remove(); };
+  bg.onmousedown = (e) => { if (e.target === bg) close(); };
+  bg.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Escape') close(); else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $m('mOk').click(); };
+  $m('mCancel').onclick = close;
+  $m('mOk').onclick = async () => {
+    const links = $m('mLinks').value.trim();
+    if (!links) { $m('mStatus').textContent = 'Paste at least one link.'; $m('mStatus').className = 'mstatus err'; return; }
+    busy = true; $m('mOk').disabled = true; $m('mCancel').disabled = true; $m('mStatus').className = 'mstatus'; $m('mStatus').textContent = 'Reading links…';
+    const r = await run(askName ? $m('mName').value : '', links);
+    busy = false;
+    if (r.ok) { bg.remove(); return; }
+    $m('mOk').disabled = false; $m('mCancel').disabled = false; $m('mStatus').className = 'mstatus err'; $m('mStatus').textContent = r.error;
+  };
+  ($m('mName') || $m('mLinks')).focus();
+}
+function customModal() {
+  linksModal({
+    heading: 'New custom course', askName: true, okLabel: 'Create course',
+    run: async (name, text) => {
+      const raw = await api.resolveVideos(text);
+      if (!raw.ok) return raw;
+      const r = prepareResolved(raw), p = r;
+      if (!r.lessons.length) return { ok: false, error: r.errors[0] || 'Nothing readable found in those links' };
+      const now = Date.now(), id = 'c' + now.toString(36) + Math.random().toString(36).slice(2, 6);
+      await api.save({
+        id, custom: true, title: name.trim() || 'My custom course', channel: '', url: '',
+        thumbnail: lessonThumb(p.lessons[0]), createdAt: now, lastOpened: now, lastLesson: r.lessons[0].id,
+        lessons: r.lessons.map((l) => ({ ...l, done: false, pos: 0, notes: '' })),
+      });
+      openCourse(id);
+      toast(`Course created with ${r.lessons.length} item${r.lessons.length === 1 ? '' : 's'}` + (r.errors.length ? ` · ${r.errors.length} link(s) skipped` : ''), false);
+      return { ok: true };
+    },
+  });
+}
+function addModal() {
+  linksModal({
+    heading: 'Add videos or articles to this course', okLabel: 'Add to course',
+    run: async (_n, text) => {
+      const raw = await api.resolveVideos(text);
+      if (!raw.ok) return raw;
+      const r = prepareResolved(raw);
+      if (!r.lessons.length) return { ok: false, error: r.errors[0] || 'Nothing readable found in those links' };
+      mergeResolved(r);
+      return { ok: true };
+    },
+  });
+}
+
+// ---------- settings: export / import ----------
+const PREFS = ['theme', 'vol', 'rate', 'cc', 'audio', 'timerPreset'];
+function settingsModal() {
+  if (document.getElementById('modal')) return;
+  const bg = document.createElement('div'); bg.className = 'modal-bg'; bg.id = 'modal';
+  bg.innerHTML = `<div class="modal" role="dialog" aria-modal="true">
+    <h3>Settings</h3>
+    <div class="setsec"><b>Backup &amp; restore</b>
+      <p class="hint">One file with all your courses, progress, notes, highlights, saved articles and preferences. Use it to back up, move to another computer, or carry your data to the Android app. Downloaded videos are not included.</p>
+      <div class="nrow"><button class="btn" id="sExport">Export data…</button><button class="btn ghost" id="sImport">Import data…</button></div>
+      <p class="hint">Importing never deletes anything: courses you already have are merged (progress and notes from both are kept).</p>
+      <div class="mstatus" id="sStatus"></div></div>
+    <div class="setsec"><b>Data folder</b><div class="nrow"><button class="btn ghost" id="sFolder">Open data folder</button></div></div>
+    <div class="mrow"><button class="btn ghost" id="sClose" type="button">Close</button></div></div>`;
+  document.body.appendChild(bg);
+  const $s = (id) => document.getElementById(id), msg = (t, err) => { $s('sStatus').textContent = t; $s('sStatus').className = 'mstatus' + (err ? ' err' : ''); };
+  const close = () => bg.remove();
+  bg.onmousedown = (e) => { if (e.target === bg) close(); };
+  bg.onkeydown = (e) => { e.stopPropagation(); if (e.key === 'Escape') close(); };
+  $s('sClose').onclick = close; $s('sFolder').onclick = () => api.openDataFolder();
+  $s('sExport').onclick = async () => {
+    flushSave(); const prefs = {}; for (const k of PREFS) { const v = LS.get(k, undefined); if (v !== undefined) prefs[k] = v; }
+    const r = await api.exportData(prefs);
+    if (r.canceled) return;
+    r.ok ? msg(`Saved ${r.count} course${r.count === 1 ? '' : 's'} (${fmtBytes(r.size)}) to ${r.path}`) : msg('Export failed: ' + r.error, true);
+  };
+  $s('sImport').onclick = async () => {
+    const r = await api.importData();
+    if (r.canceled) return;
+    if (!r.ok) return msg('Import failed: ' + r.error, true);
+    for (const k of PREFS) if (r.prefs[k] !== undefined) LS.set(k, r.prefs[k]);
+    if (r.prefs.theme) document.documentElement.dataset.theme = r.prefs.theme;
+    close(); toast(`Imported: ${r.added} new, ${r.merged} merged${r.skipped ? `, ${r.skipped} skipped` : ''}`); goHome();
+  };
 }
 
 goHome();
